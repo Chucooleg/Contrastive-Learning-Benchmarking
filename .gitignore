@@ -7,4 +7,5 @@ Untitled.ipynb
 */checkpoints/
 */checkpoints*
 */lightning_logs/
-
+.vscode/
+Raw_Datasets/
