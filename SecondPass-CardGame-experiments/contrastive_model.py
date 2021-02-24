@@ -248,6 +248,7 @@ class EncoderPredictor(nn.Module):
         inp_pads = torch.zeros(X.shape).type_as(X).int()
         # shape(b, l, d_model) 
         repr = self.key_encoder(inp_embed, inp_pads)
+        # shape(b, d_model)
         return repr[:, self.repr_pos, :]
 
     def encode_all_keys(self):

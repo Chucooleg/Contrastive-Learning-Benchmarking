@@ -5,35 +5,84 @@ from util_distribution import get_distribution, plot_distribution
 from tqdm import tqdm
 
 
-def decode_key_to_vocab_token(num_attrs, num_attr_vals, key_idx, null_idx):
-    # (0*16, 1*16, 2*16, 3*16)
-    key_range_indices = np.arange(num_attrs) * num_attr_vals
+def decode_key_to_vocab_token(num_attrs, num_attr_vals, key_idx, null_vocab_idx):
+    '''
+    convert key_idx into vocab tokens for training
+    '''
     # per attribute e.g. for 4 attr, 16 attr vals (10, 15, 5, 15)
     key_properties = decode_key_idx(num_attrs, num_attr_vals, key_idx)
+    return decode_key_properties_to_vocab_token(num_attrs, num_attr_vals, key_properties, null_vocab_idx)
+
+def encode_vocab_token_to_key(num_attrs, num_attr_vals, vocab_tokens, null_vocab_idx):
+    '''
+    reverse decode_key_to_vocab_token()
+    '''
+    key_properties = encode_vocab_token_to_key_properties(num_attrs, num_attr_vals, vocab_tokens, null_vocab_idx)
+    key_idx = encode_key_idx(num_attrs, num_attr_vals, key_properties)
+    return key_idx
+
+def decode_key_properties_to_vocab_token(num_attrs, num_attr_vals, key_properties, null_vocab_idx):
+    '''
+    key_properties: np array. e.g. for 4 attr, 16 attr vals (10, 15, 5, 15)
+    '''
+    # (0*16, 1*16, 2*16, 3*16)
+    key_range_indices = np.arange(num_attrs) * num_attr_vals
     if key_properties.size == 0:
         # null card
-        key_properties = np.array([null_idx] * num_attrs)
+        vocab_tokens = np.array([null_vocab_idx] * num_attrs)
     else:
         # according to vocab e.g. for 4 attr, 16 attr vals (0*16+10=10, 1*16+15=31, 2*16+5=37, 3*16+15=63)
-        key_properties = key_range_indices + key_properties
+        vocab_tokens = key_range_indices + key_properties
+    return vocab_tokens
+
+def encode_vocab_token_to_key_properties(num_attrs, num_attr_vals, vocab_tokens, null_vocab_idx):
+    '''
+    reverse of decode_key_properties_to_vocab_token()
+    '''
+    assert isinstance(vocab_tokens, np.ndarray), 'vocab tokens should be type np.ndarray'
+    # (0*16, 1*16, 2*16, 3*16)
+    key_range_indices = np.arange(num_attrs) * num_attr_vals
+    if set(vocab_tokens) == {null_vocab_idx}:
+        key_properties = np.array([])
+    else:
+        key_properties = vocab_tokens - key_range_indices
     return key_properties
 
-def decode_key_idx(num_attrs, num_attr_vals, card_idx):
+def decode_key_idx(num_attrs, num_attr_vals, key_idx):
     '''
-    decode card idx into attr val idx
+    decode card idx into attr val indices
     '''
-    assert card_idx < num_attr_vals ** num_attrs + 1
-    ans = []
-    if card_idx == num_attr_vals ** num_attrs:
-        return np.array(ans)
+    assert key_idx <= num_attr_vals ** num_attrs, (key_idx)
+    key_properties = []
+    if key_idx == num_attr_vals ** num_attrs:
+        return np.array([])
     else:
-        card_idx_copy = card_idx
+        card_idx_copy = key_idx
         for i in range(num_attrs):
             digit = card_idx_copy % num_attr_vals
-            ans = [digit] + ans
+            key_properties = [digit] + key_properties
             card_idx_copy = card_idx_copy // num_attr_vals
-        assert len(ans) == num_attrs
-        return np.array(ans)
+        assert len(key_properties) == num_attrs
+        return np.array(key_properties)
+    
+def encode_key_idx(num_attrs, num_attr_vals, key_properties):
+    '''
+    reverse of decode_key_idx()
+    '''
+    key_properties = list(key_properties)
+
+    if not key_properties:
+        return num_attr_vals ** num_attrs
+    else:
+        key_idx = 0
+        digit = 0
+        while key_properties:
+            attr_val = key_properties.pop()
+            key_idx += attr_val * (num_attr_vals**digit)
+            digit += 1
+    return key_idx
+
+##############################
 
 def decode_query_idx(num_attrs, num_attr_vals, query_idx):
     '''decode query_idx into pair of card indices'''

@@ -109,19 +109,9 @@ class DecoderPredictor(nn.Module):
         X_query: shape(b, len_q),  includes <SOS> and <SEP>
         X_key: shape(b, len_k), includes <SOS>
         '''
-        b = X_query.shape[0]
-        # replace <SOS> by <SEP>
-        if X_key[0, 0] != self.SEP:
-            # SEPs = torch.tensor(self.SEP).type_as(X_query).repeat(b)
-            # X_key[:, 0] = SEPs 
-            X_key[:, 0] = self.SEP
-
-        # shape(b, inp_len)).
-        # out_len: <SOS>-Qcard1-<SEP>-Qcard2-<SEP>-Kcard
-        X_querykey = torch.cat([X_query, X_key], dim=-1)
-        l = X_querykey.shape[1]
         # shape(b, inp_len, d_model)
-        decoder_out = self.decode_querykey(X_querykey)
+        decoder_out, X_querykey = self.decode_querykey(X_query, X_key)
+        b, l = X_querykey.shape
         # shape (b, inp_len, V)
         out_logits = self.classifier(decoder_out)
         assert out_logits.shape == (b, l, self.vocab_size)
@@ -149,21 +139,33 @@ class DecoderPredictor(nn.Module):
         # shape(b, key_support_size, inp_len, V)
         return out_logits_all_keys, None
 
-    def decode_querykey(self, X):
+    def decode_querykey(self, X_query, X_key):
         '''
-        X_querykey: (batch_size=b, l)
+        X_query: shape(b, len_q)
+        X_key: shape(b, len_k) 
         '''
-        b, l = X.shape
-        V = self.num_attrs*self.num_attr_vals+1
+        b = X_query.shape[0]
+        # replace <SOS> by <SEP>
+        if X_key[0, 0] != self.SEP:
+            # SEPs = torch.tensor(self.SEP).type_as(X_query).repeat(b)
+            # X_key[:, 0] = SEPs 
+            X_key[:, 0] = self.SEP
+
+        # shape(b, inp_len)).
+        # out_len: <SOS>-Qcard1-<SEP>-Qcard2-<SEP>-Kcard
+        X_querykey = torch.cat([X_query, X_key], dim=-1)
+        l = X_querykey.shape[1]
+
         # shape(b, l, embed_dim)
-        inp_embed = self.inp_querykey_layer(X)
+        inp_embed = self.inp_querykey_layer(X_querykey)
         assert inp_embed.shape == (b, l, self.d_model)
         # shape(batch_size=b, inp_len)
-        inp_pads = torch.zeros(X.shape).type_as(X).int()
+        inp_pads = torch.zeros(X_querykey.shape).type_as(X_querykey).int()
         # shape(b, inp_len, d_model) 
         decoder_out = self.querykey_decoder(inp_embed, inp_pads)
         assert decoder_out.shape == (b, l, self.d_model)
-        return decoder_out
+        return decoder_out, X_querykey
+
 
 
 class Classifier(nn.Module):

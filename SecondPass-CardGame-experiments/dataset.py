@@ -1,7 +1,9 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from dataraw_full_matrix import gen_card_data
-from dataraw_sampling import check_q1q2k_match, decode_key_idx, decode_query_idx, decode_key_to_vocab_token
+from dataraw_sampling import (
+    check_q1q2k_match, decode_key_idx, decode_query_idx, decode_key_to_vocab_token, 
+    decode_key_properties_to_vocab_token, encode_key_idx, encode_query_idx)
 import numpy as np
 
 class GameDatasetFromFullMatrix():
@@ -72,10 +74,11 @@ class GameDatasetFromDataPoints(Dataset):
 
         self.decode_key_to_vocab_token = decode_key_to_vocab_token
         self.decode_key_idx = decode_key_idx
+        self.decode_query_idx = decode_query_idx
 
     def compute_gt(self, query_idx):
         # TODO more efficiently
-        q1_idx, q2_idx = decode_query_idx(self.num_attrs, self.num_attr_vals, query_idx)
+        q1_idx, q2_idx = self.decode_query_idx(self.num_attrs, self.num_attr_vals, query_idx)
         query1 = self.decode_key_idx(self.num_attrs, self.num_attr_vals, q1_idx)
         query2 = self.decode_key_idx(self.num_attrs, self.num_attr_vals, q2_idx)
         
@@ -106,13 +109,13 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
         gt = self.compute_gt(y_j)
            
         if self.embedding_by_property:
-            yj1, yj2 = decode_query_idx(self.num_attrs, self.num_attr_vals, y_j)
-            yj1_properties = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, yj1, self.NULL)
-            yj2_properties = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, yj2, self.NULL)
-            x_i_properties = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, x_i, self.NULL)
+            yj1, yj2 = self.decode_query_idx(self.num_attrs, self.num_attr_vals, y_j)
+            yj1_vocab_tokens = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, yj1, self.NULL)
+            yj2_vocab_tokens = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, yj2, self.NULL)
+            x_i_vocab_tokens = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, x_i, self.NULL)
         
         if self.debug:
-            yj1, yj2 = decode_query_idx(self.num_attrs, self.num_attr_vals, y_j)
+            yj1, yj2 = self.decode_query_idx(self.num_attrs, self.num_attr_vals, y_j)
             print(
                 'query\n', y_j, "\n", yj1, yj2, "\n",
                 self.decode_key_idx(self.num_attrs, self.num_attr_vals, yj1), 
@@ -131,9 +134,9 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
                 y_j_tensor, # query
                 x_i_tensor, # gt key
                 # shape(2 + 2*num attributes,)
-                torch.tensor(np.concatenate([[self.SOS], yj1_properties, [self.SEP], yj2_properties])).long(), # query
+                torch.tensor(np.concatenate([[self.SOS], yj1_vocab_tokens, [self.SEP], yj2_vocab_tokens])).long(), # query
                 # shape(1 + num attributes,)
-                torch.tensor(np.concatenate([[self.SOS], x_i_properties])).long(), # gt key
+                torch.tensor(np.concatenate([[self.SOS], x_i_vocab_tokens])).long(), # gt key
                 # shape(key_support_size,)
                 torch.tensor(gt).long()     # all gt keys 1s and 0s, for metrics computation
             )
@@ -146,8 +149,6 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
                 torch.tensor(gt).long()     # all gt keys 1s and 0s, for metrics computation
             )
 
-
-############################################################################
 
 class GameTestFullDataset(GameDatasetFromDataPoints):
     
@@ -166,12 +167,12 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
         gt = self.compute_gt(y_j)
 
         if self.embedding_by_property:
-            yj1, yj2 = decode_query_idx(self.num_attrs, self.num_attr_vals, y_j)
-            yj1_properties = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, yj1, self.NULL)
+            yj1, yj2 = self.decode_query_idx(self.num_attrs, self.num_attr_vals, y_j)
+            yj1_vocab_tokens = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, yj1, self.NULL)
             yj2_properties = self.decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, yj2, self.NULL)
 
         if self.debug:
-            yj1, yj2 = decode_query_idx(self.num_attrs, self.num_attr_vals, y_j)
+            yj1, yj2 = self.decode_query_idx(self.num_attrs, self.num_attr_vals, y_j)
             print(
                 'query\n', y_j, "\n", yj1, yj2, "\n",
                 self.decode_key_idx(self.num_attrs, self.num_attr_vals, yj1), 
@@ -189,7 +190,7 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
                 y_j_tensor, # query
                 x_i_tensor, # dummy key
                 # shape(2 + 2*num attributes,)
-                torch.tensor(np.concatenate([[self.SOS], yj1_properties, [self.SEP], yj2_properties])).long(), # query
+                torch.tensor(np.concatenate([[self.SOS], yj1_vocab_tokens, [self.SEP], yj2_properties])).long(), # query
                 x_i_tensor, # dummy key
                 # shape(key_support_size,)
                 torch.tensor(gt).long()     # all gt keys 1s and 0s, for metrics computation
@@ -201,4 +202,75 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
                 y_j_tensor, # query
                 x_i_tensor, # dummy key
                 torch.tensor(gt).long()     # all gt keys 1s and 0s, for metrics computation
+            )
+
+
+class PropertyBatchFetcher(GameDatasetFromDataPoints):
+    
+    def __init__(self, raw_data, embedding_by_property, debug=False):
+        '''
+        raw_data: object returned by sample_dataset()
+        '''
+        super().__init__(raw_data, embedding_by_property, debug)
+        self.decode_key_properties_to_vocab_token = decode_key_properties_to_vocab_token
+        self.encode_key_idx = encode_key_idx
+        self.encode_query_idx = encode_query_idx
+
+    def make_batch_from_propertylist(self, queries, keys):
+        '''
+        queries: property list, of len b, each a list of 2 lists
+        keys: property list, of len b, each a list
+        '''
+        assert queries or keys
+        if queries and keys: 
+            assert len(queries) == len(keys)
+        b = max(len(queries), len(keys))
+
+        SOSs = np.array([self.SOS] * b).reshape(-1, 1)
+        SEPs = np.array([self.SEP] * b).reshape(-1, 1)
+
+        if queries:
+            queries = np.array(queries)
+            # len b
+            y_j1s = [self.encode_key_idx(self.num_attrs, self.num_attr_vals, q[0]) for q in queries]
+            y_j2s = [self.encode_key_idx(self.num_attrs, self.num_attr_vals, q[1]) for q in queries]
+            y_js = [self.encode_query_idx(self.num_attrs, self.num_attr_vals, j1, j2) for j1, j2 in zip(y_j1s, y_j2s)]
+            # shape (b, 1)
+            y_j_tensors = torch.tensor(y_js).long().unsqueeze(-1)
+            gts = torch.tensor([self.compute_gt(y_j) for y_j in y_js]).long()
+            if self.embedding_by_property:
+                # shape (b, num attr)
+                y_j1_vocab_tokens = np.array([decode_key_properties_to_vocab_token(self.num_attrs, self.num_attr_vals, q[0], self.NULL) for q in queries])
+                # shape (b, num attr)
+                y_j2_vocab_tokens = np.array([decode_key_properties_to_vocab_token(self.num_attrs, self.num_attr_vals, q[1], self.NULL) for q in queries])
+                # shape (b, 2*num attr + 2)
+                y_jout = torch.tensor(np.concatenate([SOSs, y_j1_vocab_tokens, SEPs, y_j2_vocab_tokens], axis=-1)).long()
+            else:
+                y_jout = y_j_tensors
+        else:
+            y_j_tensors = None
+            gts = None
+            y_jout = None
+
+        if keys:
+            x_is = [self.encode_key_idx(self.num_attrs, self.num_attr_vals, k) for k in keys]
+            # shape (b, 1)
+            x_i_tensors = torch.tensor(x_is).long().unsqueeze(-1)
+            if self.embedding_by_property:
+                # shape (b, num attr)
+                x_i_vocab_tokens = np.array([decode_key_properties_to_vocab_token(self.num_attrs, self.num_attr_vals, np.array(k), self.NULL) for k in keys])
+                # shape (b, num attr + 1)
+                x_i_out = torch.tensor(np.concatenate([SOSs, x_i_vocab_tokens], axis=-1)).long()
+            else:
+                x_i_out = x_i_tensors
+        else:
+            x_i_tensors = None
+            x_i_out = None
+            
+        return (
+            y_j_tensors,
+            x_i_tensors,
+            y_jout, 
+            x_i_out,
+            gts     # all gt keys 1s and 0s, for metrics computation
             )

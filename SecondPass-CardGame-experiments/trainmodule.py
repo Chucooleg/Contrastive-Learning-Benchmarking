@@ -368,6 +368,18 @@ class GenerativeTrainModule(TrainModule):
         ) if val_bool else None
 
         return logits, loss, metrics
+    ###################################################
+
+    def pull_representations(self, X_query, X_key):
+        '''
+        Pull vector repr for query-key pairs
+        X_query: shape(b, len_q)
+        X_key: shape(b, len_k) 
+        '''
+        assert X_query and X_key
+        # shape(b, inp_len, d_model)  
+        repr = self.model.decode_querykey(X_query, X_key)
+        return repr
 
     ###################################################
 
@@ -421,7 +433,22 @@ class ContrastiveTrainModule(TrainModule):
         self.softmax = nn.Softmax(dim=1)
 
     ###################################################
+
+    def pull_representations(self, X_query, X_key):
+        '''
+        Pull vector repr for query-key pairs
+        X_query: shape(b, len_q)
+        X_key: shape(b, len_k) 
+        '''
+        assert X_query or X_key
+        # shape(b, d_model)  
+        query_repr = self.model.encode_query(X_query) if X_query else None
+        # shape(b, d_model)  
+        key_repr = self.model.encode_key(X_key) if X_key else None 
+        return (query_repr, key_repr)
     
+    ###################################################
+
     def forward(self, X_queryId, X_query, X_key, X_keys, val_bool, full_test_bool=False, debug=False):
         '''
         X_query: (b, lenq)
