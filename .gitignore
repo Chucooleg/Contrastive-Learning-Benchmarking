@@ -9,3 +9,8 @@ Untitled.ipynb
 */lightning_logs/
 .vscode/
 Raw_Datasets/
+SecondPass-Toy-experiments/
+.pyc
+*/__pycache__/
+!**/__pycache__/
+*.pyc

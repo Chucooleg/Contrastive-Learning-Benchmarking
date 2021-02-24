@@ -101,7 +101,7 @@ class TrainModule(pl.LightningModule):
         query_idx: shape (b,)
         logits: shape(b, key_support_size)
         '''  
-        assert query_idx.shape[0] == logits.shape[0]
+        assert query_idx.shape == (logits.shape[0],)
         b = query_idx.shape[0]
         assert logits.shape[1] == self.key_support_size
         for i in range(b):
@@ -214,7 +214,7 @@ class TrainModule(pl.LightningModule):
         logits, _, metrics = self(X_queryId, X_query, None, X_keys, val_bool=True, full_test_bool=True, debug=self.debug)
         
         if self.populate_logits_matrix:
-            self.populate_model_logits_matrix(X_queryId, logits)
+            self.populate_model_logits_matrix(X_queryId.squeeze(-1), logits)
         
         # log
         step_metrics = {'test_'+m:metrics[m] for m in metrics}
@@ -240,8 +240,6 @@ class TrainModule(pl.LightningModule):
     
     def test_epoch_end(self, outputs):        
         averaged_metrics = self.aggregate_metrics_at_epoch_end(outputs)
-        assert 'avg_test_error_rate_for_1_matched_concepts' in averaged_metrics
-            
         return averaged_metrics
     
 

@@ -282,9 +282,12 @@ def main(args):
             sys.exit(1)
 
     # check point path
-    ts = time.time()
-    TIMESTAMP = st = datetime.datetime.fromtimestamp(ts).strftime('%Y%m%d-%H%M%S-')
-    ckpt_dir_PATH = os.path.join(args.checkpoint_dir, project_name, TIMESTAMP+run_name)
+    if args.mode == 'train':
+        ts = time.time()
+        TIMESTAMP = st = datetime.datetime.fromtimestamp(ts).strftime('%Y%m%d-%H%M%S-')
+        ckpt_dir_PATH = os.path.join(args.checkpoint_dir, project_name, TIMESTAMP+run_name)
+    else:
+        ckpt_dir_PATH = '/'.join(args.config_path.split('/')[:-1])
     print('Checkpoint Path:\n', ckpt_dir_PATH)
     os.makedirs(ckpt_dir_PATH, exist_ok=True)
 
@@ -304,8 +307,10 @@ def main(args):
     else: # test
         # testloader
         test_loader = DataLoader(
-            GameTestFullDataset(raw_data=game_data, debug=hparams['debug']), 
-            atch_size=hparams['batch_size'], shuffle=False
+            GameTestFullDataset(
+                raw_data=game_data, embedding_by_property=hparams['embedding_by_property'] ,debug=hparams['debug']
+            ), 
+            batch_size=hparams['batch_size'], shuffle=False
         )
         run_test(args, hparams, args.ckpt_name, gt, test_loader, trainmodule, ckpt_dir_PATH, figsize=(10,15))
 
