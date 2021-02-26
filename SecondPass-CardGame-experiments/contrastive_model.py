@@ -85,6 +85,7 @@ def construct_full_model(hparams):
         num_attrs = hparams['num_attributes'], 
         num_attr_vals = hparams['num_attr_vals'], 
         repr_pos = hparams['representation_pos'],
+        normalize_dotproduct = hparams['normalize_dotproduct'],
         debug = hparams['debug'],
     )
     
@@ -95,13 +96,15 @@ class EncoderPredictor(nn.Module):
     
     def __init__(
         self, inp_query_layer, inp_key_layer, query_encoder, key_encoder, classifier, 
-        key_support_size, d_model, vocab_size, SOS, NULL, num_attrs, num_attr_vals, repr_pos, debug=False
+        key_support_size, d_model, vocab_size, SOS, NULL, num_attrs, num_attr_vals, repr_pos, 
+        normalize_dotproduct, debug=False
         ):
         super().__init__()
         self.inp_query_layer = inp_query_layer
         self.inp_key_layer = inp_key_layer
         self.query_encoder = query_encoder
         self.key_encoder = key_encoder
+        self.normalize_dotproduct = normalize_dotproduct
         self.classifier = classifier
         self.key_support_size = key_support_size
         self.d_model = d_model
@@ -134,12 +137,12 @@ class EncoderPredictor(nn.Module):
         if self.query_encoder or self.key_encoder:
             assert (self.query_encoder and self.key_encoder)
         
-    def forward(self, X_query, X_key, val_bool, debug=False):
+    def forward(self, X_query, X_key, from_support, debug=False):
         '''
         X_query: (b, query_len) 
         X_key: (b, key_len).
         '''
-        if val_bool:
+        if from_support:
             return self.forward_norm_support(X_query, debug=debug)
         else:
             assert X_key is not None, 'X_key should not be None for normalizing over minibatch keys.'
@@ -173,8 +176,24 @@ class EncoderPredictor(nn.Module):
             # shape(b, b)
             logits = logits.squeeze(1).reshape(b, b)
         else:
+            if debug: print('Using dot-product, NOT Classifier')
             # shape(b, b) dotproduct=logit matrix
             logits = torch.matmul(query_repr, key_repr.T)
+            # normalize into cosine distance
+            if self.normalize_dotproduct:
+                # shape (b, )
+                l2norm_query = torch.linalg.norm(query_repr, ord=2, dim=-1)
+                # shape (b, )
+                l2norm_key = torch.linalg.norm(key_repr, ord=2, dim=-1)
+                # shape (b, b)
+                l2norm_query_tiled = l2norm_query.unsqueeze(1).expand(b, b)
+                # shape (b, b)
+                l2norm_key_tiled = l2norm_key.unsqueeze(0).expand(b, b)
+                # shape (b, b)
+                norm_product = l2norm_query_tiled * l2norm_key_tiled
+                assert norm_product.shape == (b, b)
+                logits = logits / norm_product
+
         assert logits.shape == (b, b)
         
         # shape(b, b)
@@ -206,6 +225,21 @@ class EncoderPredictor(nn.Module):
         else:
             # shape(b, size(support)) dotproduct=logit matrix
             logits = torch.matmul(query_repr, keys_repr.T)
+            # normalize into cosine distance
+            if self.normalize_dotproduct:
+                # shape (b, )
+                l2norm_query = torch.linalg.norm(query_repr, ord=2, dim=-1)
+                # shape (support, )
+                l2norm_key = torch.linalg.norm(keys_repr, ord=2, dim=-1)
+                # shape (b, support)
+                l2norm_query_tiled = l2norm_query.unsqueeze(1).expand(b, self.key_support_size)
+                # shape (b, support)
+                l2norm_key_tiled = l2norm_key.unsqueeze(0).expand(b, self.key_support_size)
+                # shape (b, support)
+                norm_product = l2norm_query_tiled * l2norm_key_tiled
+                assert norm_product.shape == (b, self.key_support_size)
+                logits = logits / norm_product
+
         assert logits.shape == (b, self.key_support_size)
         
         # shape(b, size(support)) 
@@ -238,7 +272,10 @@ class EncoderPredictor(nn.Module):
         '''
         b, l = X.shape 
         # shape(b, l, embed_dim)
-        inp_embed = self.inp_key_layer(X)
+        try:
+            inp_embed = self.inp_key_layer(X)
+        except:
+            import pdb; pdb.set_trace()
         assert inp_embed.shape == (b, l, self.d_model)
         if not self.key_encoder:
             assert inp_embed.shape == (b, 1, self.d_model)

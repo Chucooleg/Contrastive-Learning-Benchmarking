@@ -222,14 +222,15 @@ class PropertyBatchFetcher(GameDatasetFromDataPoints):
         keys: property list, of len b, each a list
         '''
         assert queries or keys
-        if queries and keys: 
-            assert len(queries) == len(keys)
-        b = max(len(queries), len(keys))
-
-        SOSs = np.array([self.SOS] * b).reshape(-1, 1)
-        SEPs = np.array([self.SEP] * b).reshape(-1, 1)
+        if queries:
+            b_q = len(queries)
+        if keys:
+            b_k = len(keys)
 
         if queries:
+            SOSs = np.array([self.SOS] * b_q).reshape(-1, 1)
+            SEPs = np.array([self.SEP] * b_q).reshape(-1, 1)
+
             queries = np.array(queries)
             # len b
             y_j1s = [self.encode_key_idx(self.num_attrs, self.num_attr_vals, q[0]) for q in queries]
@@ -253,6 +254,9 @@ class PropertyBatchFetcher(GameDatasetFromDataPoints):
             y_jout = None
 
         if keys:
+            SOSs = np.array([self.SOS] * b_k).reshape(-1, 1)
+            SEPs = np.array([self.SEP] * b_k).reshape(-1, 1)
+
             x_is = [self.encode_key_idx(self.num_attrs, self.num_attr_vals, k) for k in keys]
             # shape (b, 1)
             x_i_tensors = torch.tensor(x_is).long().unsqueeze(-1)

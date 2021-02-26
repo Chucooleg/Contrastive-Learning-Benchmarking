@@ -84,6 +84,10 @@ def encode_key_idx(num_attrs, num_attr_vals, key_properties):
 
 ##############################
 
+def decode_query_idx_to_key_properties(num_attrs, num_attr_vals, query_idx):
+    key1_idx, key2_idx = decode_query_idx(num_attrs, num_attr_vals, query_idx)
+    return [decode_key_idx(num_attrs, num_attr_vals, key1_idx), decode_key_idx(num_attrs, num_attr_vals, key2_idx)]
+
 def decode_query_idx(num_attrs, num_attr_vals, query_idx):
     '''decode query_idx into pair of card indices'''
     num_cards = num_attr_vals ** num_attrs

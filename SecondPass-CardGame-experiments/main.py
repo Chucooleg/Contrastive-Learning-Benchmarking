@@ -95,6 +95,11 @@ def load_hparams(args, data):
             hparams["encoder"] = 'lookup'
             hparams["decoder"] = 'lookup'
 
+    if hparams['model'] == 'contrastive' and (not 'contrastive_use_infoNCE' in hparams):
+        hparams['contrastive_use_infoNCE'] = True
+    if hparams['model'] == 'contrastive' and (not 'normalize_dotproduct' in hparams):
+        hparams['normalize_dotproduct'] = False
+
     print('----------hparams----------')
     for k in hparams:
         print(k, ':', hparams[k])
@@ -124,7 +129,7 @@ def run_test(args, hparams, ckpt_name, gt, test_loader, trainmodule, ckpt_dir_PA
     trainmodule.load_state_dict(checkpoint['state_dict'])
 
     trainer = pl.Trainer(
-        gpus=[args.gpu], 
+        # gpus=[args.gpu],
         min_epochs=1, max_epochs=1, 
         precision=32, 
         log_gpu_memory='all',
@@ -205,7 +210,8 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         weights_summary='full',
         gradient_clip_val=hparams['gradient_clip_val'],
         callbacks=[checkpoint_callback],
-        val_check_interval=1000,
+        profiler="simple"
+        # val_check_interval=1000,
         # num_sanity_val_steps=0,
     )
 

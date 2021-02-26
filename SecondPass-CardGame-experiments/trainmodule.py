@@ -9,7 +9,7 @@ import numpy as np
 
 import contrastive_model
 import generative_model
-from metrics import LabelSmoothedLoss, InfoCELoss, ThresholdedMetrics
+from metrics import LabelSmoothedLoss, InfoCELoss, CELoss, ThresholdedMetrics
 from optimizers import LRScheduledAdam
 
 
@@ -184,8 +184,9 @@ class TrainModule(pl.LightningModule):
     def validation_step(self, batch, batch_nb):
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
         X_queryId, X_keyId, X_query, X_key, X_keys = batch
-        _, loss, _ = self(X_queryId, X_query, X_key, None, val_bool=False, debug=self.debug)
-        _, _, metrics = self(X_queryId, X_query, None, X_keys, val_bool=True, debug=self.debug)
+
+        _, loss, _ = self(X_queryId, X_keyId, X_query, X_key, None, val_bool=False, debug=self.debug)
+        _, _, metrics = self(X_queryId, X_keyId, X_query, None, X_keys, val_bool=True, debug=self.debug)
         
         if self.debug:
             print('-----------------------------')
@@ -207,11 +208,11 @@ class TrainModule(pl.LightningModule):
     def test_step(self, batch, batch_nb):
 
         # (b, 1), (b, len_q), (b, support size)
-        X_queryId, _, X_query, _, X_keys = batch
+        X_queryId, X_keyId, X_query, _, X_keys = batch
         
         # compute scores for all keys
         # shape(b, key_support_size), _, dictionary
-        logits, _, metrics = self(X_queryId, X_query, None, X_keys, val_bool=True, full_test_bool=True, debug=self.debug)
+        logits, _, metrics = self(X_queryId, X_keyId, X_query, None, X_keys, val_bool=True, full_test_bool=True, debug=self.debug)
         
         if self.populate_logits_matrix:
             self.populate_model_logits_matrix(X_queryId.squeeze(-1), logits)
@@ -322,7 +323,7 @@ class GenerativeTrainModule(TrainModule):
 
     ###################################################
 
-    def forward(self, X_queryId, X_query, X_key, X_keys, val_bool, full_test_bool=False, debug=False):
+    def forward(self, X_queryId, X_keyId, X_query, X_key, X_keys, val_bool, full_test_bool=False, debug=False):
         '''
         X_query: (b, len_q)
         X_key: (b, len_k)
@@ -338,9 +339,9 @@ class GenerativeTrainModule(TrainModule):
         else:
             len_k = self.hparams['len_k']
 
-        # logits shape (b, key_support_size, inp_len, V) if val_bool else (b, inp_len, V)
+        # logits shape (b, key_support_size, inp_len, V) if from_support else (b, inp_len, V)
         # X_querykey shape (b, inp_len)
-        logits, X_querykey = self.model(X_query, X_key, val_bool, debug=debug)
+        logits, X_querykey = self.model(X_query, X_key, from_support=val_bool, debug=debug)
 
         if val_bool:
             assert logits.shape == (b, self.key_support_size, len_q+len_k, self.vocab_size)
@@ -350,6 +351,7 @@ class GenerativeTrainModule(TrainModule):
             assert X_querykey.shape == (b, len_q+len_k)
 
         # scalar
+        # TODO also compute loss for validation
         labels = None if val_bool else self.make_labels(X_querykey)
         loss = None if val_bool else self.loss_criterion(logits=logits, labels=labels, debug=debug)
 
@@ -388,7 +390,7 @@ class GenerativeTrainModule(TrainModule):
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
         X_queryId, X_keyId, X_query, X_key, X_keys = batch
         # scalar
-        _, loss, _ = self(X_queryId, X_query, X_key, None, val_bool=False, debug=self.debug)
+        _, loss, _ = self(X_queryId, X_keyId, X_query, X_key, None, val_bool=False, debug=self.debug)
         # # dict
         # metrics = {} # Take too long
         
@@ -429,7 +431,17 @@ class ContrastiveTrainModule(TrainModule):
     def __init__(self, hparams, gt_distributions={}):
         super().__init__(hparams, gt_distributions)
         self.model = contrastive_model.construct_full_model(hparams)
-        self.loss_criterion = InfoCELoss(temperature_const=self.hparams['loss_temperature_const'])
+        self.use_InfoNCE = hparams['contrastive_use_infoNCE']
+
+        self.CE_criterion = CELoss(
+                key_support_size=self.hparams['key_support_size'],
+                temperature_const=self.hparams['loss_temperature_const']) 
+
+        if self.use_InfoNCE:
+            self.loss_criterion = InfoCELoss(temperature_const=self.hparams['loss_temperature_const'])
+        else:
+            self.loss_criterion = self.CE_criterion
+
         self.softmax = nn.Softmax(dim=1)
 
     ###################################################
@@ -449,8 +461,10 @@ class ContrastiveTrainModule(TrainModule):
     
     ###################################################
 
-    def forward(self, X_queryId, X_query, X_key, X_keys, val_bool, full_test_bool=False, debug=False):
+    def forward(self, X_queryId, X_keyId, X_query, X_key, X_keys, val_bool, full_test_bool=False, debug=False):
         '''
+        X_queryId: (b, 1)
+        X_keyId: (b, 1)
         X_query: (b, lenq)
         X_key: (b, lenk)
         X_keys: (b, key_support_size) 1s and 0s.
@@ -462,10 +476,13 @@ class ContrastiveTrainModule(TrainModule):
         if X_key is not None:
             len_k = X_key.shape[1]
             assert len_k == self.hparams['len_k']
-        # shape (b,support) if val_bool else (b, b)
-        logits = self.model(X_query, X_key, val_bool, debug=debug)
+
+        # shape (b,support) if from_support else (b, b)
+        logits = self.model(X_query, X_key, from_support=((not self.use_InfoNCE) or val_bool), debug=debug)
+
         # scalar
-        loss = None if val_bool else self.loss_criterion(logits, debug=debug)
+        loss = None if val_bool else self.loss_criterion(logits, X_keyId, debug=debug)
+
         # scalar
         metrics = self.metrics(
             X_query=X_queryId,
@@ -485,9 +502,10 @@ class ContrastiveTrainModule(TrainModule):
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
         X_queryId, X_keyId, X_query, X_key, X_keys = batch
         # scalar
-        _, loss, _ = self(X_queryId, X_query, X_key, None, val_bool=False, debug=self.debug)
+        _, loss, _ = self(X_queryId, X_keyId, X_query, X_key, None, val_bool=False, debug=self.debug)
         # dict
-        _, _, metrics = self(X_queryId, X_query, None, X_keys, val_bool=True, debug=self.debug)
+        metrics = {} # TODO remove this
+        # _, _, metrics = self(X_queryId, X_keyId, X_query, None, X_keys, val_bool=True, debug=self.debug)
         
         if self.debug:
             print('-----------------------------')
@@ -518,13 +536,19 @@ class ContrastiveTrainModule(TrainModule):
                 correct_bias=True
             )
         else:
-            opt = torch.optim.Adam(
+            opt = torch.optim.SGD(
                 params=self.model.parameters(),
-                lr=self.hparams['adam_lr'],
-                betas=(
-                    self.hparams['adam_beta1'], self.hparams['adam_beta2']),
-                eps=self.hparams['adam_epsilon'],
-                weight_decay=self.hparams['adam_weight_decay']
+                lr=self.hparams['sgd_lr'],
+                momentum=self.hparams['sgd_momentum']
             )
+    
+            # opt = torch.optim.Adam(
+            #     params=self.model.parameters(),
+            #     lr=self.hparams['adam_lr'],
+            #     betas=(
+            #         self.hparams['adam_beta1'], self.hparams['adam_beta2']),
+            #     eps=self.hparams['adam_epsilon'],
+            #     weight_decay=self.hparams['adam_weight_decay']
+            # )
         return opt
 

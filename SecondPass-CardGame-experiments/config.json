@@ -1,14 +1,14 @@
 {
     "seed": 42,
-    "batch_size": 128,
-    "max_epochs": 1,
+    "batch_size": 512,
+    "max_epochs": 200,
 
-    "d_model": 128,
+    "d_model": 37,
     "embed_dropout": 0.0,
 
-    "model": "generative",
+    "model": "contrastive",
 
-    "embedding_by_property": true,
+    "embedding_by_property": false,
     "encoder": "transformer",
     "decoder": "transformer",
     "d_ff":1024,
@@ -22,6 +22,8 @@
     "representation_pos": 0,
 
     "dotproduct_bottleneck": true,
+    "normalize_dotproduct": true,
+    "contrastive_use_infoNCE": true,
     "loss_temperature_const": 1.0,
     "loss_smoothing_const": 0.1,
     "nonlinear_classifier_scale_down_factor": [2,1],
@@ -31,6 +33,9 @@
     "adam_beta2": 0.999,
     "adam_epsilon": 1e-08,
     "adam_weight_decay":0,
+
+    "sgd_lr": 0.001,
+    "sgd_momentum":0,
 
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,

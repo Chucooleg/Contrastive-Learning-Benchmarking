@@ -14,15 +14,17 @@ class InfoCELoss(nn.Module):
         self.temperature_const = temperature_const
         self.CE_loss = nn.CrossEntropyLoss(reduction='sum')
 
-    def forward(self, logits, debug=False):
+    def forward(self, logits, X_keyId=None, debug=False):
         '''
         logits: shape (batch_size=b, b)
+        X_keyId: shape (batch_size=b, )
         '''
         assert logits.shape[0] == logits.shape[1]
         b = logits.shape[0]
         
         logits /= self.temperature_const
         
+        # (b, )
         labels = torch.arange(b).type_as(logits).long()
         sum_loss_per_row = self.CE_loss(logits, labels)
         sum_loss_per_col = self.CE_loss(logits.T, labels)
@@ -33,6 +35,29 @@ class InfoCELoss(nn.Module):
 
         loss = (sum_loss_per_row + sum_loss_per_col) * 0.5
         return loss
+############################################################
+
+class CELoss(nn.Module):
+    '''
+    InfoCE Loss on a (b, support) logits matrix with Temperature scaling
+    '''
+    def __init__(self, key_support_size, temperature_const=1.0):
+        super().__init__()
+        self.key_support_size = key_support_size
+        self.temperature_const = temperature_const
+        self.CE_loss = nn.CrossEntropyLoss(reduction='sum')
+
+    def forward(self, logits, X_keyId, debug=False):
+        '''
+        logits: shape (batch_size=b, key_support_size)
+        X_keyId: shape (batch_size=b, )
+        '''
+        assert logits.shape[1] == self.key_support_size
+        b = logits.shape[0]
+
+        logits /= self.temperature_const
+        labels = X_keyId
+        return self.CE_loss(logits, labels.squeeze(-1))
 
 
 ############################################################
@@ -312,3 +337,69 @@ class ThresholdedMetrics(nn.Module):
             **metrics, **error_breakdown_by_num_matched_concepts
         }
         return metrics
+
+
+############################################################
+
+def find_cos(v, Wv):
+    # (b,)
+    dot_products = torch.sum(v.unsqueeze(0) * Wv, dim=-1)
+    # scalar
+    l2norm_v = torch.linalg.norm(v, ord=2)
+    # (b, )
+    l2norm_Wv = torch.linalg.norm(Wv, ord=2, dim=-1)
+    # (b,)
+    l2norm_product = l2norm_v * l2norm_Wv
+    # (b,)
+    cosine_sim = dot_products / l2norm_product
+    return cosine_sim
+
+def find_euclidean(v, Wv):
+    # (b, ), similarity = negative distance
+    return - torch.sum((v.unsqueeze(0) - Wv)**2, dim=-1)**(1/2)
+
+def find_dotproduct(v, Wv):
+    # (b,)
+    return torch.sum(v.unsqueeze(0) * Wv, dim=-1)
+
+def find_nn(v, Wv, similarity_fn, k=None):
+    '''
+    v: (d_model,). Vector representation of interest.
+    Wv: (b, d_model) word embeddings we consider.
+    k: int. for top k neighbors.
+    '''
+    print(v.shape)
+    assert v.shape[0] == Wv.shape[1]
+    b = Wv.shape[0]
+    if not k: k = b
+    similarities = similarity_fn(v, Wv)
+    # (b,)
+    nns = torch.argsort(similarities, descending=True)[:k]
+    # (b,)
+    similarities = torch.take(similarities, nns)
+    return nns, similarities
+
+def analogy(vA, vB, vC, Wv, k, similarity_fn):
+    """
+    Find the vector(s) that best answer "A is to B as C is to ___", returning 
+    the top k candidates by cosine similarity.
+
+    Args:
+      vA: (d-dimensional vector) vector for word A
+      vB: (d-dimensional vector) vector for word B
+      vC: (d-dimensional vector) vector for word C
+      Wv: (V x d matrix) word embeddings
+      k: (int) number of neighbors to return
+
+    Returns (nns, ds), where:
+      nns: (k-dimensional vector of int), row indices of the top candidate 
+        words.
+      similarities: (k-dimensional vector of float), cosine similarity of each 
+        of the top candidate words.
+    """
+    A_to_B = vB - vA
+    vD = vC + A_to_B
+    return find_nn(vD, Wv, similarity_fn, k)
+
+
+############################################################

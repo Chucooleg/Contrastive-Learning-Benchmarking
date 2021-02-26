@@ -96,8 +96,8 @@ class DecoderPredictor(nn.Module):
             tensor= torch.tensor(all_keys, dtype=torch.long)
         )
 
-    def forward(self, X_query, X_key, val_bool, debug=False):
-        if val_bool:
+    def forward(self, X_query, X_key, from_support, debug=False):
+        if from_support:
             return self.forward_norm_support(X_query, debug=debug)
         else:
             assert X_key is not None, 'X_key should not be None for normalizing over minibatch keys.'
