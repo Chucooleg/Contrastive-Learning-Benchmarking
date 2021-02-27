@@ -100,6 +100,9 @@ def load_hparams(args, data):
     if hparams['model'] == 'contrastive' and (not 'normalize_dotproduct' in hparams):
         hparams['normalize_dotproduct'] = False
 
+    if args.mode == 'resume_train':
+        hparams['max_epochs'] = args.resume_max_epochs
+
     print('----------hparams----------')
     for k in hparams:
         print(k, ':', hparams[k])
@@ -177,9 +180,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         log_gpu_memory='all',
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
-        replace_sampler_ddp=False,
         callbacks=[checkpoint_callback],
-        val_check_interval=1000,
     )
     
     with torch.autograd.detect_anomaly():
@@ -333,6 +334,7 @@ if __name__ == '__main__':
     parser.add_argument('--generate_full_matrix', help='1/0. if full matrix is small enough.', type=int)
     parser.add_argument('--checkpoint_dir', help='path to save and load checkpoints.')
     parser.add_argument('--mode', help='train, resume_train, test_full')
+    parser.add_argument('--resume_max_epochs', default=None, help='must provide if resume training or testing')
     parser.add_argument('--runID', default=None, help='must provide if resume training or testing')
     parser.add_argument('--project_name', default=None, help='must provide if resume training or testing')
     parser.add_argument('--ckpt_name', default=None, help='must provide if resume training or testing')

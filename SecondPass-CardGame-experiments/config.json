@@ -1,9 +1,9 @@
 {
     "seed": 42,
     "batch_size": 512,
-    "max_epochs": 200,
+    "max_epochs": 100,
 
-    "d_model": 37,
+    "d_model": 9,
     "embed_dropout": 0.0,
 
     "model": "contrastive",
