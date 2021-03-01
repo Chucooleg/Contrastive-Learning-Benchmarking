@@ -47,17 +47,6 @@ def validate_data(data):
     ):
         assert key in data, f'{key} not found in data'
 
-    if 'num_cards_per_query' not in data:
-        data['num_cards_per_query'] = int(np.log(data['query_support_size']) / np.log(data['key_support_size']-1))
-
-    # temporaray for CardGame data without vocab import
-    data['vocab_size'] = (data['num_attributes'] * data['num_attr_vals']) + 5
-    data['NULL'] = data['vocab_size']-5
-    data['SEP'] = data['vocab_size']-4
-    data['SOS'] = data['vocab_size']-3
-    data['EOS'] = data['vocab_size']-2
-    data['PAD'] = data['vocab_size']-1
-
 
 def load_hparams(args, data):
     with open(args.config_path, 'r') as f:
@@ -69,12 +58,16 @@ def load_hparams(args, data):
         hparams['num_attributes'] = data['num_attributes']
         hparams['num_attr_vals'] = data['num_attr_vals']
         hparams['num_cards_per_query'] = data['num_cards_per_query']
+        hparams['nest_depth_int'] = data['nest_depth_int']
         hparams['vocab_size'] = data['vocab_size']
+        hparams['('] = data['(']
+        hparams[')'] = data[')']
         hparams['NULL'] = data['NULL']
         hparams['SEP'] = data['SEP']
         hparams['SOS'] = data['SOS']
         hparams['EOS'] = data['EOS']
         hparams['PAD'] = data['PAD']
+        hparams['hold_out'] = data['hold_out']
 
         hparams['populate_logits_matrix'] = args.generate_full_matrix
         if hparams['embedding_by_property']:
@@ -278,7 +271,7 @@ def main(args):
         hparams['d_model'],
         'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
         round(max(model_summary.param_nums)/1000,2))
-    project_name = 'ContrastiveLearning-cardgame-Scaling-SecondPass'
+    project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
     wd_logger = WandbLogger(name=run_name, project=project_name)
     print('RUN NAME :\n', run_name)
 

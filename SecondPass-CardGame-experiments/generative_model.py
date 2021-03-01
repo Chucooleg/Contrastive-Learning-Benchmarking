@@ -53,7 +53,7 @@ def construct_full_model(hparams):
         vocab_size = hparams['vocab_size'],
         SEP = hparams['SEP'],
         NULL = hparams['NULL'],
-        num_attrs = hparams['num_attributes'], 
+        num_attributes = hparams['num_attributes'], 
         num_attr_vals = hparams['num_attr_vals'], 
         debug = hparams['debug'],
     )
@@ -65,13 +65,13 @@ class DecoderPredictor(nn.Module):
 
     def __init__(
         self, inp_querykey_layer, querykey_decoder, classifier, key_support_size, 
-        d_model, vocab_size, SEP, NULL, num_attrs, num_attr_vals, debug=False):
+        d_model, vocab_size, SEP, NULL, num_attributes, num_attr_vals, debug=False):
         super().__init__()
         self.inp_querykey_layer = inp_querykey_layer
         self.querykey_decoder = querykey_decoder
         self.classifier = classifier
         self.key_support_size = key_support_size
-        self.num_attrs = num_attrs
+        self.num_attributes = num_attributes
         self.num_attr_vals = num_attr_vals
         self.d_model = d_model
         self.SEP = SEP
@@ -83,14 +83,14 @@ class DecoderPredictor(nn.Module):
 
     def setup_all_keys(self):
         # by key index
-        all_keys = np.empty((self.key_support_size, 1 + self.num_attrs)) # + <SOS>
+        all_keys = np.empty((self.key_support_size, 1 + self.num_attributes)) # + <SOS>
 
         for key_idx in range(self.key_support_size):
-            key_properties = decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, key_idx, self.NULL)
+            key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
             all_keys[key_idx, :] = np.concatenate([[self.SEP], key_properties])
 
         # register all keys (for testing)
-        # (key_support_size, num_attrs+1)
+        # (key_support_size, num_attributes+1)
         self.register_buffer(
             name='all_keys',
             tensor= torch.tensor(all_keys, dtype=torch.long)
@@ -127,11 +127,11 @@ class DecoderPredictor(nn.Module):
         out_logits_all_keys = torch.empty(b, self.key_support_size, l, self.vocab_size).type_as(X_query).float()
 
         for key_idx in range(self.key_support_size):
-            # shape(inp_len=self.num_attrs + 1,)
+            # shape(inp_len=self.num_attributes + 1,)
             X_key = self.all_keys[key_idx, :]
-            # shape(b, inp_len=self.num_attrs + 1)
+            # shape(b, inp_len=self.num_attributes + 1)
             X_key = X_key.unsqueeze(0).repeat(b, 1)
-            assert X_key.shape == (b, self.num_attrs+1)
+            assert X_key.shape == (b, self.num_attributes+1)
             # shape (b, inp_len, V) 
             out_logits, _ = self.forward_minibatch(X_query, X_key, debug=debug)
             out_logits_all_keys[:, key_idx, :, :] = out_logits

@@ -82,7 +82,7 @@ def construct_full_model(hparams):
         vocab_size = hparams['vocab_size'],
         SOS = hparams['SOS'],
         NULL = hparams['NULL'],
-        num_attrs = hparams['num_attributes'], 
+        num_attributes = hparams['num_attributes'], 
         num_attr_vals = hparams['num_attr_vals'], 
         repr_pos = hparams['representation_pos'],
         normalize_dotproduct = hparams['normalize_dotproduct'],
@@ -96,7 +96,7 @@ class EncoderPredictor(nn.Module):
     
     def __init__(
         self, inp_query_layer, inp_key_layer, query_encoder, key_encoder, classifier, 
-        key_support_size, d_model, vocab_size, SOS, NULL, num_attrs, num_attr_vals, repr_pos, 
+        key_support_size, d_model, vocab_size, SOS, NULL, num_attributes, num_attr_vals, repr_pos, 
         normalize_dotproduct, debug=False
         ):
         super().__init__()
@@ -111,7 +111,7 @@ class EncoderPredictor(nn.Module):
         self.vocab_size = vocab_size
         self.SOS = SOS
         self.NULL = NULL
-        self.num_attrs = num_attrs
+        self.num_attributes = num_attributes
         self.num_attr_vals = num_attr_vals
         self.repr_pos = repr_pos
         self.debug = debug
@@ -120,14 +120,14 @@ class EncoderPredictor(nn.Module):
 
     def setup_all_keys(self):
         # by key index
-        all_keys = np.empty((self.key_support_size, 1 + self.num_attrs)) # +1: add <SOS> token
+        all_keys = np.empty((self.key_support_size, 1 + self.num_attributes)) # +1: add <SOS> token
 
         for key_idx in range(self.key_support_size):
-            key_properties = decode_key_to_vocab_token(self.num_attrs, self.num_attr_vals, key_idx, self.NULL)
+            key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
             all_keys[key_idx, :] = np.concatenate([[self.SOS], key_properties])
 
         # register all keys (for testing)
-        # (key_support_size, num_attrs)
+        # (key_support_size, num_attributes)
         self.register_buffer(
             name='all_keys',
             tensor= torch.tensor(all_keys, dtype=torch.long)
@@ -301,11 +301,11 @@ class EncoderPredictor(nn.Module):
             X = self.all_keys
             # shape(size(support), l=num attributes+1, embed_dim)
             inp_embed = self.inp_key_layer(X)
-            assert inp_embed.shape == (self.key_support_size, self.num_attrs+1, self.d_model)
+            assert inp_embed.shape == (self.key_support_size, self.num_attributes+1, self.d_model)
             inp_pads = torch.zeros(X.shape).type_as(X).int()
             # shape(size(support), l, d_model)
             repr = self.key_encoder(inp_embed, inp_pads)
-            assert repr.shape == (self.key_support_size, self.num_attrs+1, self.d_model)
+            assert repr.shape == (self.key_support_size, self.num_attributes+1, self.d_model)
             # shape(size(support), d_model) 
             return repr[:, self.repr_pos, :]
 

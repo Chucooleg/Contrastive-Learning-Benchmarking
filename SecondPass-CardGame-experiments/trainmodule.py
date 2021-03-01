@@ -183,15 +183,14 @@ class TrainModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_nb):
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
-        X_queryId, X_keyId, X_query, X_key, X_keys = batch
+        X_queryId, X_keyId, X_query, X_key = batch
 
-        _, loss, _ = self(X_queryId, X_keyId, X_query, X_key, None, val_bool=False, debug=self.debug)
-        _, _, metrics = self(X_queryId, X_keyId, X_query, None, X_keys, val_bool=True, debug=self.debug)
+        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, val_bool=False, debug=self.debug)
+        _, _, _, metrics = self(X_queryId, X_keyId, X_query, X_key, val_bool=True, debug=self.debug)
         
         if self.debug:
             print('-----------------------------')
             print('validation step')
-            print(Counter(torch.sum(X_keys, dim=1).tolist()).most_common())
             print(
                 'X_query:',X_query[0], '\X_key:',
                 X_key[0], '\nloss:', loss, '\nmetrics:', [(m,metrics[m]) for m in metrics]
@@ -208,11 +207,11 @@ class TrainModule(pl.LightningModule):
     def test_step(self, batch, batch_nb):
 
         # (b, 1), (b, len_q), (b, support size)
-        X_queryId, X_keyId, X_query, _, X_keys = batch
+        X_queryId, X_keyId, X_query, X_key = batch
         
         # compute scores for all keys
         # shape(b, key_support_size), _, dictionary
-        logits, _, metrics = self(X_queryId, X_keyId, X_query, None, X_keys, val_bool=True, full_test_bool=True, debug=self.debug)
+        logits, _, _, metrics = self(X_queryId, X_keyId, X_query, X_key, val_bool=True, full_test_bool=True, debug=self.debug)
         
         if self.populate_logits_matrix:
             self.populate_model_logits_matrix(X_queryId.squeeze(-1), logits)
@@ -323,11 +322,12 @@ class GenerativeTrainModule(TrainModule):
 
     ###################################################
 
-    def forward(self, X_queryId, X_keyId, X_query, X_key, X_keys, val_bool, full_test_bool=False, debug=False):
+    def forward(self, X_queryId, X_keyId, X_query, X_key, val_bool, full_test_bool=False, debug=False):
         '''
+        X_queryId: (b, 1)
+        X_keyId: (b, 1)
         X_query: (b, len_q)
         X_key: (b, len_k)
-        X_keys: (b, key_support_size) 1s and 0s.
         val_bool: boolean. Compute metrics such as acc, precision, recall, f1 based on queries.
         full_test_bool: boolean. Compute metrics. Further breakdown by null and nonNull queries.
         '''
@@ -353,23 +353,20 @@ class GenerativeTrainModule(TrainModule):
         # scalar
         # TODO also compute loss for validation
         labels = None if val_bool else self.make_labels(X_querykey)
-        loss = None if val_bool else self.loss_criterion(logits=logits, labels=labels, debug=debug)
+        loss, _ = (None, None) if val_bool else self.loss_criterion(logits=logits, labels=labels, debug=debug)
 
         # shape (b, key_support_size) 
         probs = self.score_sequence(logits, X_query) if val_bool else None
 
         # scalar
-        metrics = self.metrics(
-            X_query=X_queryId,
+        metrics, = self.metrics(
+            X_queryId=X_queryId,
             scores=probs, # shape (b,support)
-            threshold=1.0/self.hparams['key_support_size'],
-            X_keys=X_keys,
-            breakdown_null_nonNull=full_test_bool, 
-            breakdown_byrank=True, 
+            X_keyId=X_keyId,
             debug=debug, 
         ) if val_bool else None
 
-        return logits, loss, metrics
+        return logits, loss, _, metrics
     ###################################################
 
     def pull_representations(self, X_query, X_key):
@@ -388,24 +385,18 @@ class GenerativeTrainModule(TrainModule):
     def training_step(self, batch, batch_nb):
         
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
-        X_queryId, X_keyId, X_query, X_key, X_keys = batch
+        X_queryId, X_keyId, X_query, X_key = batch
         # scalar
-        _, loss, _ = self(X_queryId, X_keyId, X_query, X_key, None, val_bool=False, debug=self.debug)
-        # # dict
-        # metrics = {} # Take too long
+        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, val_bool=False, debug=self.debug)
         
         if self.debug:
             print('-----------------------------')
             print('train step')
-            print(Counter(torch.sum(X_keys, dim=1).tolist()).most_common())
             print(
                 'X_query:',X_query[0], '\nX_key:',
                 X_key[0], '\nloss:', loss,
             )
-        
-        # # log
-        # step_metrics = {**{'train_loss': loss}, **{'train_'+m:metrics[m] for m in metrics}}
-        # self.log_metrics(step_metrics)
+
         return loss
 
     ###################################################
@@ -461,13 +452,14 @@ class ContrastiveTrainModule(TrainModule):
     
     ###################################################
 
-    def forward(self, X_queryId, X_keyId, X_query, X_key, X_keys, val_bool, full_test_bool=False, debug=False):
+    def forward(self, X_queryId, X_keyId, X_query, X_key, val_bool, full_test_bool=False, debug=False):
         '''
+        X_queryId: (b, 1)
+        X_keyId: (b, 1)
         X_queryId: (b, 1)
         X_keyId: (b, 1)
         X_query: (b, lenq)
         X_key: (b, lenk)
-        X_keys: (b, key_support_size) 1s and 0s.
         val_bool: boolean. Compute metrics such as acc, precision, recall, f1 based on queries.
         full_test_bool: boolean. Compute metrics. Further breakdown by null and nonNull queries.
         '''
@@ -480,45 +472,35 @@ class ContrastiveTrainModule(TrainModule):
         # shape (b,support) if from_support else (b, b)
         logits = self.model(X_query, X_key, from_support=((not self.use_InfoNCE) or val_bool), debug=debug)
 
-        # scalar
-        loss = None if val_bool else self.loss_criterion(logits, X_keyId, debug=debug)
+        # scalar, shape(b,) # HERE TODO
+        loss, loss_full = (None, None) if val_bool else self.loss_criterion(logits, X_keyId, debug=debug)
 
         # scalar
         metrics = self.metrics(
-            X_query=X_queryId,
+            X_queryId=X_queryId,
             scores=self.softmax(logits), # probabilities, shape (b,support)
-            threshold=1.0/self.hparams['key_support_size'],
-            X_keys=X_keys,
-            breakdown_null_nonNull=full_test_bool, 
-            breakdown_byrank=True, 
+            X_keyId=X_keyId,
             debug=debug, 
         ) if val_bool else None
-        return logits, loss, metrics
+        return logits, loss, loss_full, metrics
     
     ###################################################
 
     def training_step(self, batch, batch_nb):
         
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
-        X_queryId, X_keyId, X_query, X_key, X_keys = batch
+        X_queryId, X_keyId, X_query, X_key = batch
         # scalar
-        _, loss, _ = self(X_queryId, X_keyId, X_query, X_key, None, val_bool=False, debug=self.debug)
-        # dict
-        metrics = {} # TODO remove this
-        # _, _, metrics = self(X_queryId, X_keyId, X_query, None, X_keys, val_bool=True, debug=self.debug)
+        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, val_bool=False, debug=self.debug)
         
         if self.debug:
             print('-----------------------------')
             print('train step')
-            print(Counter(torch.sum(X_keys, dim=1).tolist()).most_common())
             print(
                 'X_query:',X_query[0], '\nX_key:',
-                X_key[0], '\nloss:', loss, '\nmetrics:\n', [(m,metrics[m]) for m in metrics]
+                X_key[0], '\nloss:', loss,
             )
         
-        # log
-        step_metrics = {**{'train_loss': loss}, **{'train_'+m:metrics[m] for m in metrics}}
-        self.log_metrics(step_metrics)
         return loss
 
     ###################################################
