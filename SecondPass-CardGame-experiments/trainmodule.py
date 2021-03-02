@@ -227,10 +227,11 @@ class TrainModule(pl.LightningModule):
         epoch_metrics = {}
         metric_names = outputs[0].keys()
         for m in metric_names:
-            if not ('max_memory_alloc_cuda' in m or 'count' in m or 'rate' in m):
-                epoch_metrics['avg_'+m] = torch.stack([x[m] for x in outputs]).mean()
-            elif '_matched_concepts' in m:
-                epoch_metrics['avg_'+m] = np.mean([x[m] for x in outputs])
+            if not ('max_memory_alloc_cuda' in m ):
+                try:
+                    epoch_metrics['avg_'+m] = torch.stack([x[m] for x in outputs]).mean()
+                except:
+                    import pdb; pdb.set_trace()
         self.log_metrics(epoch_metrics)
         return epoch_metrics         
     
@@ -396,7 +397,9 @@ class GenerativeTrainModule(TrainModule):
                 'X_query:',X_query[0], '\nX_key:',
                 X_key[0], '\nloss:', loss,
             )
-
+        # log
+        step_metrics = {**{'train_loss': loss}}
+        self.log_metrics(step_metrics)
         return loss
 
     ###################################################
@@ -472,13 +475,14 @@ class ContrastiveTrainModule(TrainModule):
         # shape (b,support) if from_support else (b, b)
         logits = self.model(X_query, X_key, from_support=((not self.use_InfoNCE) or val_bool), debug=debug)
 
-        # scalar, shape(b,) # HERE TODO
+        # scalar, shape(b,)
         loss, loss_full = (None, None) if val_bool else self.loss_criterion(logits, X_keyId, debug=debug)
 
         # scalar
         metrics = self.metrics(
             X_queryId=X_queryId,
             scores=self.softmax(logits), # probabilities, shape (b,support)
+            threshold=1.0/self.hparams['key_support_size'],
             X_keyId=X_keyId,
             debug=debug, 
         ) if val_bool else None
@@ -501,6 +505,9 @@ class ContrastiveTrainModule(TrainModule):
                 X_key[0], '\nloss:', loss,
             )
         
+        # log
+        step_metrics = {**{'train_loss': loss}}
+        self.log_metrics(step_metrics)
         return loss
 
     ###################################################

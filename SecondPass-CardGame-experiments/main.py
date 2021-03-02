@@ -15,10 +15,9 @@ import wandb
 wandb.login()
 from pytorch_lightning.loggers import WandbLogger
 
-from dataraw_sampling import sample_dataset, plot_sampled_distribution
-from dataraw_full_matrix import gen_card_data, report_gamedata_distribution
+from dataraw_sampling import gen_full_matrices
 from util_distribution import plot_distribution
-from dataset import GameDatasetFromFullMatrix, GameTestFullDataset, GameDatasetTrainDataset
+from dataset import GameTestFullDataset
 from datamodule import GameDataModule
 from trainmodule import ContrastiveTrainModule, GenerativeTrainModule
 
@@ -30,10 +29,15 @@ def load_data(data_path):
         data = json.load(f)
     print('---------data----------')
     for k in data:
-        if not 'datapoints' in k:
+        if not 'datapoints' in k and not 'tokens' in k:
             print(k, ':', data[k])
         else:
-            print(k,'length :', len(data[k]))
+            if not data[k]:
+                assert 'val' in k
+                k_tr = k.replace('val', 'train')
+                print(k,'length :', len(data[k_tr]))
+            else:
+                print(k,'length :', len(data[k]))
     print('-----------------------')
     return data
 
@@ -105,8 +109,9 @@ def load_hparams(args, data):
 
 def gen_full_matrix(hparams):
     print('Generating Full Matrix')
-    game_data_full = gen_card_data(hparams['num_attributes'], hparams['num_attr_vals'], num_unseen_cardpairs=0, debug=False)
-    count_table, xy, xyind, xy_div_xyind, distribution = report_gamedata_distribution(game_data_full, distribution_epsilon=0.0)
+    count_table, xy, xyind, xy_div_xyind, distribution = gen_full_matrices(
+        hparams['num_attributes'], hparams['num_attr_vals'], hparams['num_cards_per_query'], hparams['nest_depth_int']
+    )
     gt = {
         'count_table':count_table,
         'xy':xy,
@@ -157,7 +162,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
     trainmodule.load_state_dict(checkpoint['state_dict'])
  
     checkpoint_callback = ModelCheckpoint(
-        monitor='avg_val_accuracy_by_Query',
+        monitor='avg_val_argmax_accuracy',
         dirpath=ckpt_dir_PATH,
         filename='{epoch:02d}-{step:02d}-{val_loss:.2f}',
         save_top_k=3,
@@ -186,7 +191,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
 
     # checkpoints
     checkpoint_callback = ModelCheckpoint(
-        monitor='avg_val_accuracy_by_Query',
+        monitor='avg_val_argmax_accuracy',
         dirpath=ckpt_dir_PATH,
         filename='{epoch:02d}-{step:02d}-{val_loss:.2f}',
         save_top_k=3,
@@ -264,8 +269,8 @@ def main(args):
     )   
 
     # logger
-    run_name = 'CardGame:OR;attr{}-val{};{};{};d_model{};{};params{}K'.format(
-        hparams['num_attributes'], hparams['num_attr_vals'], 
+    run_name = 'SET;attr{}-val{}-nest{};{};{};d_model{};{};params{}K'.format(
+        hparams['num_attributes'], hparams['num_attr_vals'], hparams['nest_depth_int'],
         hparams['model'],
         'embedByProperty' if hparams['embedding_by_property'] else 'lookupTable',
         hparams['d_model'],

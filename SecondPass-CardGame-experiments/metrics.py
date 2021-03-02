@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from dataraw_sampling import check_if_query_key_match_by_idx, query_idx_has_real_matches
+import torch.nn.functional as F
 import numpy as np
 
 
@@ -155,7 +155,7 @@ class ThresholdedMetrics(nn.Module):
         self.num_attr_vals = num_attr_vals
         self.key_support_size = key_support_size
      
-    def forward(self, X_queryId, scores, X_keyId, debug=False):
+    def forward(self, X_queryId, scores, threshold, X_keyId, debug=False):
         '''
         X_queryId: shape (b, 1) 
         X_keyId: shape (b,1) 
@@ -165,37 +165,106 @@ class ThresholdedMetrics(nn.Module):
         '''
         b = X_queryId.shape[0]
         assert X_queryId.shape == (b, 1) == X_keyId.shape
-        b, key_support_size = scores.shape
-        assert key_support_size == self.key_support_size
+        assert scores.shape == (b, self.key_support_size)
 
-        return self.compute_metrics(X_queryId, scores, X_keyId, debug)
+        return self.compute_metrics(
+            X_queryId=X_queryId, 
+            scores=scores, 
+            threshold=threshold, 
+            X_keyId=X_keyId, 
+            debug=debug)
 
-    def compute_metrics(self, X_queryId, scores, X_keyId, debug=False):
+    def compute_metrics(self, X_queryId, scores, threshold, X_keyId, debug=False):
         '''
         X_queryId: shape (b,1) 
         X_keyId: shape (b,1) 
+        threshold: scalar.
         scores: shape (b, support size). logits, probs or log probs.
         loss_full: shape (b,)
         '''
-        # shape (b,)
-        pred_idx = torch.argmax(scores, dim=-1)
-        # shape (b,)
-        gt = X_keyId.squeeze(-1)
-        # correct predictions, shape (b,)
-        corrects = (pred_idx == gt).type(torch.float)
+
+        b, key_support_size = scores.shape
+        
+        # model predictions, shape (b, support size)
+        binary_predictions = (scores >= threshold).type(torch.float)
+        # ground truth, shape (b, support size), 1s and 0s.
+        gt = F.one_hot(X_keyId.squeeze(-1), self.key_support_size)
+        # correct predictions, shape (b, support size)
+        corrects = (binary_predictions == gt).type(torch.float)
+
+        # accuracy, computed per query, average across queries
+        # (b,)
+        accuracy_row = torch.sum(corrects, dim=1) / key_support_size
         # scalar
-        accuracy = torch.mean(corrects).item()  
-            
+        accuracy_meanrows = torch.mean(accuracy_row)
+        # accuracy, computed per query-key, average across all
+        accuracy_all = torch.sum(corrects) / (b * key_support_size)
+
+        # precision, computed per query, average across queries
+        # (b,)
+        precision_row = torch.sum((corrects * binary_predictions), dim=1) / torch.sum(binary_predictions, dim=1)
+        # scalar
+        precision_meanrows = torch.mean(precision_row)
+        # precision, computed per query-key, average across all
+        precision_all = torch.sum((corrects * binary_predictions)) / torch.sum(binary_predictions)
+
+        # recall, computed per query, average across queries
+        # (b,)
+        recall_row = torch.sum((corrects * gt), dim=1) / torch.sum(gt, dim=1)
+        # scalar
+        recall_meanrows = torch.mean(recall_row)
+        # recall, computed per query-key, average across all
+        recall_all = torch.sum((corrects * gt)) / torch.sum(gt)
+
+        # f1, computed per query, average across queries
+        # (b,)
+        f1_row = 2 * (precision_row * recall_row) / (precision_row + recall_row)
+        # scalar
+        f1_meanrows = torch.mean(f1_row)
+        # f1, computed per query-key, average across all
+        f1_all = 2 * (precision_all * recall_all) / (precision_all + recall_all)
+
+        # shape (b,)
+        argmax_pred_idx = torch.argmax(scores, dim=-1)
+        # shape (b,)
+        argmax_gt = X_keyId.squeeze(-1)
+        # correct predictions, shape (b,)
+        argmax_corrects = (argmax_pred_idx == argmax_gt).type(torch.float)
+        # scalar
+        argmax_accuracy = torch.mean(argmax_corrects)  
+
         if debug:
             print('####################################################')
-            print('Accuracy:', accuracy)
+            print('Metrics Per Query:')
+            print('accuracy_rows', accuracy_row)
+            print('precision_row', precision_row)
+            print('recall_row', recall_row)
+            print('f1_row', f1_row)
+            print('####################################################')
+            print('Metrics Averaged Across Queries')
+            print('accuracy_meanrows', accuracy_meanrows)
+            print('precision_meanrows', precision_meanrows)
+            print('recall_meanrows', recall_meanrows)
+            print('f1_meanrows', f1_meanrows)
+            print('####################################################')
+            print('Metrics Averaged Across All Query-Key Pairs:')
+            print('accuracy_all', accuracy_all)
+            print('precision_all', precision_all)
+            print('recall_all', recall_all)
+            print('f1_all', f1_all)
+            print('####################################################')
+            print('Argmax Accuracy:', argmax_accuracy)
 
         metrics = {
-            'accuracy': accuracy,
-        }
-
-        metrics = {
-            'accuracy': accuracy,
+            'accuracy_by_Query': accuracy_meanrows,
+            'precision_by_Query': precision_meanrows,
+            'recall_by_Query': recall_meanrows,
+            'f1_by_Query': f1_meanrows,
+            'accuracy_by_QueryKey': accuracy_all,
+            'precision_by_QueryKey': precision_all,
+            'recall_by_QueryKey': recall_all,
+            'f1_by_QueryKey': f1_all,
+            'argmax_accuracy': argmax_accuracy,
         }
 
         return metrics
