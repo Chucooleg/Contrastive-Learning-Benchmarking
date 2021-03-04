@@ -87,6 +87,7 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
                 x_i_tensor, # gt key
             )
 
+
 class GameDatasetValDataset(GameDatasetFromDataPoints):
     '''Sample from Presampled Datapoints. Better for Sparse distribution matrix.'''
     
@@ -107,15 +108,12 @@ class GameDatasetValDataset(GameDatasetFromDataPoints):
         # query, key
         y_j, x_i = self.raw_data[self.split + '_datapoints'][idx]
 
-        y_vocab_tokens, _ = self.raw_data[self.split + '_tokens'][idx]
+        y_vocab_tokens, x_vocab_tokens = self.raw_data[self.split + '_tokens'][idx]
 
         gt_key_list = self.evaluate_query_idx(
             y_vocab_tokens)
         gt_idxs = gt_key_list
         gt_binary = self.make_gt_binary(gt_idxs)
-
-        # if self.embedding_by_property:
-        #     y_vocab_tokens, x_vocab_tokens = self.raw_data[self.split + '_tokens'][idx]
         
         if self.debug:
             y_vocab_tokens, x_vocab_tokens = self.raw_data[self.split + '_tokens'][idx]
@@ -173,8 +171,8 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
         if self.debug:
             y_vocab_tokens = self.decode_query_to_vocab_token(
                 self.num_attributes, self.num_attr_vals, self.num_cards_per_query, y_j, self.nest_depth_int)
-            gt_vocab_tokens = [[self.decode_key_to_vocab_token(
-                self.num_attributes, self.num_attr_vals, g_i)] for g_i in gt_idxs]
+            gt_vocab_tokens = [self.decode_key_to_vocab_token(
+                self.num_attributes, self.num_attr_vals, g_i) for g_i in gt_idxs]
             print('query\n', y_j, "\n", y_vocab_tokens)
             print('key\n', gt_idxs, "\n", gt_vocab_tokens)
 

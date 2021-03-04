@@ -1,21 +1,21 @@
 {
     "seed": 42,
     "batch_size": 512,
-    "max_epochs": 850,
+    "max_epochs": 20000,
 
-    "d_model": 10,
+    "d_model": 11,
     "embed_dropout": 0.0,
 
     "model": "contrastive",
 
-    "embedding_by_property": false,
+    "embedding_by_property": true,
     "encoder": "transformer",
     "decoder": "transformer",
     "d_ff":1024,
     "num_heads":1,
-    "N_enc":2,
-    "N_dec":2,
-    "attn_wt_tying_scheme": "untie_QKVO_zero_O",
+    "N_enc":1,
+    "N_dec":1,
+    "attn_wt_tying_scheme": "tie_QKVO_zero_O",
     "attn_wt_dropout": 0.0,
     "heads_dropout": 0.0,
     "pff_dropout": 0.0,
@@ -40,7 +40,7 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-09,
-    "scheduled_adam_warmup_steps": 4000,
+    "scheduled_adam_warmup_steps": 12000,
 
     "gradient_clip_val": 0,
 

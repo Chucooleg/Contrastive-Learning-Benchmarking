@@ -250,6 +250,7 @@ class EncoderPredictor(nn.Module):
         X: (batch_size=b, l) 
         '''
         b, l = X.shape 
+
         # shape(b, l, embed_dim)
         inp_embed = self.inp_query_layer(X)
         assert inp_embed.shape == (b, l, self.d_model)

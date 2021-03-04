@@ -7,12 +7,13 @@ def powerset(iterable):
     s = list(iterable)
     return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
 
+
 LOOKUP10 = {i:q for i, q in enumerate(powerset([i for i in range(10)]))}
 LOOKUP10[0] = (10,)
 
 ################################################################################################
 def decode_key_to_vocab_token(num_attributes, num_attr_vals, key_idx):
-    return key_idx
+    return [key_idx]
 
 def decode_query_to_vocab_token(num_attributes, num_attr_vals, num_cards_per_query, query_idx, nest_depth_int):
     # HACK for now
@@ -31,7 +32,7 @@ def construct_full_matrix(num_attributes, num_attr_vals, num_cards_per_query, ne
     count_table = np.zeros((K+1, num_queries)) # with null card
 
     for q_i, q in enumerate(queries):
-        if not q: # null card for empty set
+        if not q:  # null card for empty set
             count_table[K, q_i] += 1 
         for k in q:
             count_table[k, q_i] += 1 
@@ -82,13 +83,13 @@ def gen_full_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_de
         if not q: # null card for empty set
             lens.append(1)
             datapoints.append((q_i, K))
-            tokens.append(((K,), K))
+            tokens.append(((K,), (K,)))
             count_table[K, q_i] += 1 
         else:
             lens.append(len(q))
             for k in q:
                 datapoints.append((q_i, k))
-                tokens.append((q, k))
+                tokens.append((q, (k,)))
                 count_table[k, q_i] += 1 
     
     base_vocab_size = K+1

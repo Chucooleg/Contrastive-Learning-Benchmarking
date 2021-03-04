@@ -78,7 +78,6 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
                 torch.tensor([self.SOS] + y_vocab_tokens).long(), # query
                 # shape(1 + num attributes,)
                 torch.tensor([self.SOS] + x_vocab_tokens).long(), # gt key
-                # shape(key_support_size,)
             )
         else:
             return (

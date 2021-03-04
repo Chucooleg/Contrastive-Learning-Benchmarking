@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 import wandb
 wandb.login()
@@ -127,7 +127,7 @@ def run_test(args, hparams, ckpt_name, gt, test_loader, trainmodule, ckpt_dir_PA
     trainmodule.load_state_dict(checkpoint['state_dict'])
 
     trainer = pl.Trainer(
-        # gpus=[args.gpu],
+        gpus=[args.gpu],
         min_epochs=1, max_epochs=1, 
         precision=32, 
         log_gpu_memory='all',
@@ -167,6 +167,8 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         mode='max',
     )
 
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+
     trainer = pl.Trainer(
         gpus=[args.gpu], 
         min_epochs=2, max_epochs=hparams['max_epochs'], 
@@ -175,7 +177,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         log_gpu_memory='all',
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, lr_monitor],
     )
     
     with torch.autograd.detect_anomaly():
@@ -196,6 +198,9 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         mode='max',
     )
 
+    # monitors
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+
     # trainer
     trainer = pl.Trainer(
         gpus=[args.gpu], 
@@ -205,7 +210,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         log_gpu_memory='all',
         weights_summary='full',
         gradient_clip_val=hparams['gradient_clip_val'],
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, lr_monitor],
         profiler="simple"
         # val_check_interval=1000,
         # num_sanity_val_steps=0,
@@ -266,6 +271,7 @@ def main(args):
         batch_size = hparams['batch_size'],
         raw_data = game_data,
         embedding_by_property = hparams['embedding_by_property'],
+        PAD=hparams['PAD'],
         debug=hparams['debug']
     )   
 
@@ -279,7 +285,10 @@ def main(args):
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
     project_name = 'ContrastiveLearning-cardgame-Debug-Shattering'
-    wd_logger = WandbLogger(name=run_name, project=project_name)
+    if args.mode == 'train':
+        wd_logger = WandbLogger(name=run_name, project=project_name)
+    else:
+        wd_logger = WandbLogger(name=run_name, project=project_name, id=args.runID if args.runID else None)
     print('RUN NAME :\n', run_name)
 
     # approve model summary before training

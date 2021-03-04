@@ -399,6 +399,7 @@ class GenerativeTrainModule(TrainModule):
                 'X_query:',X_query[0], '\nX_key:',
                 X_key[0], '\nloss:', loss,
             )
+
         # log
         step_metrics = {**{'train_loss': loss}}
         self.log_metrics(step_metrics)
@@ -469,7 +470,7 @@ class ContrastiveTrainModule(TrainModule):
         full_test_bool: boolean. Compute metrics. Further breakdown by null and nonNull queries.
         '''
         b, len_q = X_query.shape
-        assert len_q == self.hparams['max_len_q']
+        assert len_q <= self.hparams['max_len_q']
         if X_key is not None:
             len_k = X_key.shape[1]
             assert len_k == self.hparams['len_k']
@@ -508,8 +509,11 @@ class ContrastiveTrainModule(TrainModule):
                 X_key[0], '\nloss:', loss,
             )
         
+        lr = self.optimizers().param_groups[0]['lr']
+        # https://forums.pytorchlightning.ai/t/access-modules-optimizers-in-a-callback/179/2
+
         # log
-        step_metrics = {**{'train_loss': loss}}
+        step_metrics = {**{'train_loss': loss, 'learning_rate': lr}}
         self.log_metrics(step_metrics)
         return loss
 
@@ -527,6 +531,11 @@ class ContrastiveTrainModule(TrainModule):
                 eps=self.hparams['scheduled_adam_epsilon'],
                 correct_bias=True
             )
+
+            # try LR decay here!
+
+
+
         else:
             opt = torch.optim.SGD(
                 params=self.model.parameters(),
