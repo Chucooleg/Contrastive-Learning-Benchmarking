@@ -155,7 +155,7 @@ class ThresholdedMetrics(nn.Module):
         self.num_attr_vals = num_attr_vals
         self.key_support_size = key_support_size
      
-    def forward(self, X_queryId, scores, threshold, X_keyId, debug=False):
+    def forward(self, X_queryId, scores, threshold, gt_binary, debug=False):
         '''
         X_queryId: shape (b, 1) 
         X_keyId: shape (b,1) 
@@ -164,20 +164,27 @@ class ThresholdedMetrics(nn.Module):
         loss_full: shape (b, ) 
         '''
         b = X_queryId.shape[0]
-        assert X_queryId.shape == (b, 1) == X_keyId.shape
+        assert gt_binary.shape == (b, self.key_support_size)
         assert scores.shape == (b, self.key_support_size)
 
         return self.compute_metrics(
             X_queryId=X_queryId, 
             scores=scores, 
             threshold=threshold, 
-            X_keyId=X_keyId, 
+            gt_binary=gt_binary, 
             debug=debug)
 
-    def compute_metrics(self, X_queryId, scores, threshold, X_keyId, debug=False):
+    def make_gt(self, X_keysId):
+        b = X_keysId.shape[0]
+        gt = torch.zeros(b, self.key_support_size).type_as(X_keysId)
+        for b_i in range(b):
+            gt[b_i, X_keysId[b_i]] = 1
+        return gt
+
+    def compute_metrics(self, X_queryId, scores, threshold, gt_binary, debug=False):
         '''
         X_queryId: shape (b,1) 
-        X_keyId: shape (b,1) 
+        gt_binary: shape (b, support size). 1s for Ground-truth key Ids (multiple) for each query in batch.
         threshold: scalar.
         scores: shape (b, support size). logits, probs or log probs.
         loss_full: shape (b,)
@@ -188,7 +195,7 @@ class ThresholdedMetrics(nn.Module):
         # model predictions, shape (b, support size)
         binary_predictions = (scores >= threshold).type(torch.float)
         # ground truth, shape (b, support size), 1s and 0s.
-        gt = F.one_hot(X_keyId.squeeze(-1), self.key_support_size)
+        gt = gt_binary
         # correct predictions, shape (b, support size)
         corrects = (binary_predictions == gt).type(torch.float)
 
@@ -224,14 +231,6 @@ class ThresholdedMetrics(nn.Module):
         # f1, computed per query-key, average across all
         f1_all = 2 * (precision_all * recall_all) / (precision_all + recall_all)
 
-        # shape (b,)
-        argmax_pred_idx = torch.argmax(scores, dim=-1)
-        # shape (b,)
-        argmax_gt = X_keyId.squeeze(-1)
-        # correct predictions, shape (b,)
-        argmax_corrects = (argmax_pred_idx == argmax_gt).type(torch.float)
-        # scalar
-        argmax_accuracy = torch.mean(argmax_corrects)  
 
         if debug:
             print('####################################################')
@@ -252,8 +251,6 @@ class ThresholdedMetrics(nn.Module):
             print('precision_all', precision_all)
             print('recall_all', recall_all)
             print('f1_all', f1_all)
-            print('####################################################')
-            print('Argmax Accuracy:', argmax_accuracy)
 
         metrics = {
             'accuracy_by_Query': accuracy_meanrows,
@@ -264,7 +261,6 @@ class ThresholdedMetrics(nn.Module):
             'precision_by_QueryKey': precision_all,
             'recall_by_QueryKey': recall_all,
             'f1_by_QueryKey': f1_all,
-            'argmax_accuracy': argmax_accuracy,
         }
 
         return metrics

@@ -183,10 +183,10 @@ class TrainModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_nb):
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
-        X_queryId, X_keyId, X_query, X_key = batch
+        X_queryId, X_keyId, X_query, X_key, gt_binary = batch
 
-        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, val_bool=False, debug=self.debug)
-        _, _, _, metrics = self(X_queryId, X_keyId, X_query, X_key, val_bool=True, debug=self.debug)
+        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
+        _, _, _, metrics = self(X_queryId, X_keyId, X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
         
         if self.debug:
             print('-----------------------------')
@@ -207,11 +207,12 @@ class TrainModule(pl.LightningModule):
     def test_step(self, batch, batch_nb):
 
         # (b, 1), (b, len_q), (b, support size)
-        X_queryId, X_keyId, X_query, X_key = batch
+        X_queryId, X_query, gt_binary = batch
+        X_keyId, X_key = None, None
         
         # compute scores for all keys
         # shape(b, key_support_size), _, dictionary
-        logits, _, _, metrics = self(X_queryId, X_keyId, X_query, X_key, val_bool=True, full_test_bool=True, debug=self.debug)
+        logits, _, _, metrics = self(X_queryId, X_keyId, X_query, X_key, gt_binary, val_bool=True, full_test_bool=True, debug=self.debug)
         
         if self.populate_logits_matrix:
             self.populate_model_logits_matrix(X_queryId.squeeze(-1), logits)
@@ -323,7 +324,7 @@ class GenerativeTrainModule(TrainModule):
 
     ###################################################
 
-    def forward(self, X_queryId, X_keyId, X_query, X_key, val_bool, full_test_bool=False, debug=False):
+    def forward(self, X_queryId, X_keyId, X_query, X_key, gt_binary, val_bool, full_test_bool=False, debug=False):
         '''
         X_queryId: (b, 1)
         X_keyId: (b, 1)
@@ -333,7 +334,7 @@ class GenerativeTrainModule(TrainModule):
         full_test_bool: boolean. Compute metrics. Further breakdown by null and nonNull queries.
         '''
         b, len_q = X_query.shape
-        assert len_q == self.hparams['len_q']
+        assert len_q <= self.hparams['max_len_q']
         if X_key is not None:
             len_k = X_key.shape[1]
             assert len_k == self.hparams['len_k']
@@ -363,7 +364,7 @@ class GenerativeTrainModule(TrainModule):
         metrics, = self.metrics(
             X_queryId=X_queryId,
             scores=probs, # shape (b,support)
-            X_keyId=X_keyId,
+            gt_binary=gt_binary,
             debug=debug, 
         ) if val_bool else None
 
@@ -387,8 +388,9 @@ class GenerativeTrainModule(TrainModule):
         
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
         X_queryId, X_keyId, X_query, X_key = batch
+        gt_binary = None
         # scalar
-        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, val_bool=False, debug=self.debug)
+        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
         
         if self.debug:
             print('-----------------------------')
@@ -455,7 +457,7 @@ class ContrastiveTrainModule(TrainModule):
     
     ###################################################
 
-    def forward(self, X_queryId, X_keyId, X_query, X_key, val_bool, full_test_bool=False, debug=False):
+    def forward(self, X_queryId, X_keyId, X_query, X_key, gt_binary, val_bool, full_test_bool=False, debug=False):
         '''
         X_queryId: (b, 1)
         X_keyId: (b, 1)
@@ -467,7 +469,7 @@ class ContrastiveTrainModule(TrainModule):
         full_test_bool: boolean. Compute metrics. Further breakdown by null and nonNull queries.
         '''
         b, len_q = X_query.shape
-        assert len_q == self.hparams['len_q']
+        assert len_q == self.hparams['max_len_q']
         if X_key is not None:
             len_k = X_key.shape[1]
             assert len_k == self.hparams['len_k']
@@ -483,8 +485,8 @@ class ContrastiveTrainModule(TrainModule):
             X_queryId=X_queryId,
             scores=self.softmax(logits), # probabilities, shape (b,support)
             threshold=1.0/self.hparams['key_support_size'],
-            X_keyId=X_keyId,
-            debug=debug, 
+            gt_binary=gt_binary,
+            debug=debug,
         ) if val_bool else None
         return logits, loss, loss_full, metrics
     
@@ -494,8 +496,9 @@ class ContrastiveTrainModule(TrainModule):
         
         # (b, 1), (b, 1), (b, len_q), (b, len_k), (b, support size)
         X_queryId, X_keyId, X_query, X_key = batch
+        gt_binary = None
         # scalar
-        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, val_bool=False, debug=self.debug)
+        _, loss, _, _ = self(X_queryId, X_keyId, X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
         
         if self.debug:
             print('-----------------------------')

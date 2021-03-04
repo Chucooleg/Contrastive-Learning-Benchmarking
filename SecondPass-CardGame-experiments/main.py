@@ -75,13 +75,10 @@ def load_hparams(args, data):
 
         hparams['populate_logits_matrix'] = args.generate_full_matrix
         if hparams['embedding_by_property']:
-            hparams['len_q'] = (
-                (hparams['num_cards_per_query'] * hparams['num_attributes']) + 
-                 hparams['num_cards_per_query']) # <SOS>---<SEP>---<SEP>---...
-            hparams['len_k'] = (
-                (hparams['num_attributes']) + 1) # <SOS>---
+            hparams['max_len_q'] = data['max_len_q'] + 1 # <SOS>---
+            hparams['len_k'] = data['len_k'] + 1 # <SOS>---
         else:
-            hparams['len_q'] = 1
+            hparams['max_len_q'] = 1
             hparams['len_k'] = 1
 
         assert hparams['model'] in ("contrastive", "generative")
@@ -162,7 +159,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
     trainmodule.load_state_dict(checkpoint['state_dict'])
  
     checkpoint_callback = ModelCheckpoint(
-        monitor='avg_val_argmax_accuracy',
+        monitor='avg_val_accuracy_by_Query',
         dirpath=ckpt_dir_PATH,
         filename='{epoch:02d}-{step:02d}-{val_loss:.2f}',
         save_top_k=3,
@@ -191,7 +188,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
 
     # checkpoints
     checkpoint_callback = ModelCheckpoint(
-        monitor='avg_val_argmax_accuracy',
+        monitor='avg_val_accuracy_by_Query',
         dirpath=ckpt_dir_PATH,
         filename='{epoch:02d}-{step:02d}-{val_loss:.2f}',
         save_top_k=3,
@@ -246,8 +243,12 @@ def main(args):
         if not val.lower() in ('yes', 'y'):
             sys.exit(1)
 
+        hparams['key_support_size']
+
     if args.generate_full_matrix:
-        assert hparams['num_attr_vals']**hparams['num_attributes'] <= 4**8, 'Full matrix is too large to be generated'
+        print('Generating Full Matrix of Size {} by {} = {}'.format(
+            hparams['key_support_size'], hparams['query_support_size'], 
+            hparams['key_support_size']*hparams['query_support_size']))
         gt = gen_full_matrix(hparams)
     else:
         gt = None  
@@ -276,7 +277,8 @@ def main(args):
         hparams['d_model'],
         'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
         round(max(model_summary.param_nums)/1000,2))
-    project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
+    # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
+    project_name = 'ContrastiveLearning-cardgame-Debug-Shattering'
     wd_logger = WandbLogger(name=run_name, project=project_name)
     print('RUN NAME :\n', run_name)
 

@@ -6,7 +6,7 @@ import math
 from collections import OrderedDict
 
 from transformer import construct_transformer_decoder, ScaledEmbedding, LearnedPositionEncoder
-from dataraw_sampling import decode_key_idx, decode_key_to_vocab_token
+from dataraw_sampling import decode_key_to_vocab_token
 
 
 def construct_full_model(hparams):
@@ -28,7 +28,7 @@ def construct_full_model(hparams):
     # 
     position_encoder = LearnedPositionEncoder(
         d_model=hparams['d_model'], 
-        max_len=hparams['len_q'] + hparams['len_k'],
+        max_len=hparams['max_len_q'] + hparams['len_k'],
         emb_init_var=torch.var(querykey_embed_X.embedding.weight).cpu().item()
     ) if hparams['embedding_by_property'] else None
 

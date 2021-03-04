@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
-from dataset import GameDatasetTrainDataset
+from dataset import GameDatasetTrainDataset, GameDatasetValDataset
 
 class GameDataModule(pl.LightningDataModule):
     
@@ -9,9 +9,9 @@ class GameDataModule(pl.LightningDataModule):
         super().__init__()
         self.batch_size = batch_size
         self.train_dataset = GameDatasetTrainDataset(
-            raw_data=raw_data, embedding_by_property=embedding_by_property, split='train', debug=debug)
-        self.val_dataset = GameDatasetTrainDataset(
-            raw_data=raw_data, embedding_by_property=embedding_by_property, split='val', debug=debug)
+            raw_data=raw_data, embedding_by_property=embedding_by_property, debug=debug)
+        self.val_dataset = GameDatasetValDataset(
+            raw_data=raw_data, embedding_by_property=embedding_by_property, debug=debug)
         
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
