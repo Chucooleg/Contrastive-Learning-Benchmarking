@@ -50,7 +50,7 @@ def validate_data(data):
         'sparsity_estimate'
     ):
         assert key in data, f'{key} not found in data'
-
+        
 
 def load_hparams(args, data):
     with open(args.config_path, 'r') as f:

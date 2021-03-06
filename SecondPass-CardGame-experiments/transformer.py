@@ -351,6 +351,7 @@ class ScaledEmbedding(nn.Module):
         elif init_option == 'transformer':
             # nn.init.normal_(self.embedding.weight, mean=0., std=(0.01)**(1/2))
             nn.init.normal_(self.embedding.weight, mean=0., std=(1/self.d_model)**(1/2))
+            # nn.init.normal_(self.embedding.weight, mean=0., std=(1/0.1)**(1/2))
             # nn.init.normal_(self.embedding.weight, mean=0., std=(1)**(1/2))
         else: # xavier
             with torch.no_grad():

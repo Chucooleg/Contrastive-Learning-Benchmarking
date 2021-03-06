@@ -508,11 +508,14 @@ class ContrastiveTrainModule(TrainModule):
                 'X_query:',X_query[0], '\nX_key:',
                 X_key[0], '\nloss:', loss,
             )
-        
-        lr = self.optimizers().param_groups[0]['lr']
-        # https://forums.pytorchlightning.ai/t/access-modules-optimizers-in-a-callback/179/2
+        try:
+            lr = self.optimizers().param_groups[0]['lr']
+        except:
+            import pdb; pdb.set_trace()
+        # # https://forums.pytorchlightning.ai/t/access-modules-optimizers-in-a-callback/179/2
 
         # log
+        # step_metrics = {**{'train_loss': loss}}
         step_metrics = {**{'train_loss': loss, 'learning_rate': lr}}
         self.log_metrics(step_metrics)
         return loss
@@ -529,12 +532,25 @@ class ContrastiveTrainModule(TrainModule):
                 betas=(
                     self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
                 eps=self.hparams['scheduled_adam_epsilon'],
-                correct_bias=True
+                correct_bias=True,
+                decay_lr=self.hparams["additional_lr_decay"],
+                decay_milestones=self.hparams["additional_lr_decay_milestones"], 
+                decay_gamma=self.hparams["additional_lr_decay_gamma"], 
             )
 
-            # try LR decay here!
-
-
+            # if self.hparams["additional_lr_decay"]:
+            #     # try LR decay here!
+            #     # https://github.com/PyTorchLightning/pytorch-lightning/issues/3795
+            #     scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            #         opt, 
+            #         milestones=self.hparams["additional_lr_decay_milestones"], 
+            #         gamma=self.hparams["additional_lr_decay_gamma"], 
+            #         last_epoch=-1, 
+            #         verbose=True)
+            #     return [opt], [scheduler]
+            # else:
+            #     return opt
+            return opt
 
         else:
             opt = torch.optim.SGD(
@@ -542,7 +558,7 @@ class ContrastiveTrainModule(TrainModule):
                 lr=self.hparams['sgd_lr'],
                 momentum=self.hparams['sgd_momentum']
             )
-    
+            
             # opt = torch.optim.Adam(
             #     params=self.model.parameters(),
             #     lr=self.hparams['adam_lr'],
@@ -551,5 +567,5 @@ class ContrastiveTrainModule(TrainModule):
             #     eps=self.hparams['adam_epsilon'],
             #     weight_decay=self.hparams['adam_weight_decay']
             # )
-        return opt
+            return opt
 
