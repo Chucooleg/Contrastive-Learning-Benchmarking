@@ -51,7 +51,9 @@ def construct_full_model(hparams):
         key_support_size = hparams['key_support_size'],
         d_model = hparams['d_model'],
         vocab_size = hparams['vocab_size'],
+        SOS = hparams['SOS'],
         SEP = hparams['SEP'],
+        PAD = hparams['PAD'],
         NULL = hparams['NULL'],
         num_attributes = hparams['num_attributes'], 
         num_attr_vals = hparams['num_attr_vals'], 
@@ -65,7 +67,7 @@ class DecoderPredictor(nn.Module):
 
     def __init__(
         self, inp_querykey_layer, querykey_decoder, classifier, key_support_size, 
-        d_model, vocab_size, SEP, NULL, num_attributes, num_attr_vals, debug=False):
+        d_model, vocab_size, SOS, SEP, PAD, NULL, num_attributes, num_attr_vals, debug=False):
         super().__init__()
         self.inp_querykey_layer = inp_querykey_layer
         self.querykey_decoder = querykey_decoder
@@ -74,7 +76,9 @@ class DecoderPredictor(nn.Module):
         self.num_attributes = num_attributes
         self.num_attr_vals = num_attr_vals
         self.d_model = d_model
+        self.SOS = SOS
         self.SEP = SEP
+        self.PAD = PAD
         self.NULL = NULL
         self.vocab_size = vocab_size
         self.debug = debug
@@ -83,11 +87,11 @@ class DecoderPredictor(nn.Module):
 
     def setup_all_keys(self):
         # by key index
-        all_keys = np.empty((self.key_support_size, 1 + self.num_attributes)) # + <SOS>
+        all_keys = np.empty((self.key_support_size, 2 + self.num_attributes)) # + <SOS>, <SEP>
 
         for key_idx in range(self.key_support_size):
             key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
-            all_keys[key_idx, :] = np.concatenate([[self.SEP], key_properties])
+            all_keys[key_idx, :] = np.concatenate([[self.SOS], key_properties, [self.SEP]])
 
         # register all keys (for testing)
         # (key_support_size, num_attributes+1)
@@ -106,32 +110,32 @@ class DecoderPredictor(nn.Module):
     def forward_minibatch(self, X_query, X_key, debug=False):
         '''
         for each query, compute the logits for each pos for the one sampled key
-        X_query: shape(b, len_q),  includes <SOS> and <SEP>
-        X_key: shape(b, len_k), includes <SOS>
+        X_query: shape(b, len_q),  includes <SOS> and <EOS>
+        X_key: shape(b, len_k), includes <SOS> and <EOS>
         '''
         # shape(b, inp_len, d_model)
         decoder_out, X_querykey = self.decode_querykey(X_query, X_key)
-        b, l = X_querykey.shape
+        b, inp_len = X_querykey.shape
         # shape (b, inp_len, V)
         out_logits = self.classifier(decoder_out)
-        assert out_logits.shape == (b, l, self.vocab_size)
+        assert out_logits.shape == (b, inp_len, self.vocab_size)
         return out_logits, X_querykey
 
     def forward_norm_support(self, X_query, debug=False):
         '''
         for each query, compute the logits for each pos for each key in support
-        X_query: shape(b, len_q),  includes <SOS> and <SEP>
+        X_query: shape(b, len_q),  includes <SOS> and <EOS>
         '''
         b, len_q = X_query.shape
-        l = len_q + self.all_keys.shape[1]
-        out_logits_all_keys = torch.empty(b, self.key_support_size, l, self.vocab_size).type_as(X_query).float()
+        inp_len = self.all_keys.shape[1] + len_q - 1 # without query <SOS>
+        out_logits_all_keys = torch.empty(b, self.key_support_size, inp_len, self.vocab_size).type_as(X_query).float()
 
         for key_idx in range(self.key_support_size):
-            # shape(inp_len=self.num_attributes + 1,)
+            # shape(inp_len=self.num_attributes + 2)
             X_key = self.all_keys[key_idx, :]
-            # shape(b, inp_len=self.num_attributes + 1)
+            # shape(b, inp_len=self.num_attributes + 2)
             X_key = X_key.unsqueeze(0).repeat(b, 1)
-            assert X_key.shape == (b, self.num_attributes+1)
+            assert X_key.shape == (b, self.num_attributes+2)
             # shape (b, inp_len, V) 
             out_logits, _ = self.forward_minibatch(X_query, X_key, debug=debug)
             out_logits_all_keys[:, key_idx, :, :] = out_logits
@@ -145,27 +149,25 @@ class DecoderPredictor(nn.Module):
         X_key: shape(b, len_k) 
         '''
         b = X_query.shape[0]
-        # replace <SOS> by <SEP>
-        if X_key[0, 0] != self.SEP:
-            # SEPs = torch.tensor(self.SEP).type_as(X_query).repeat(b)
-            # X_key[:, 0] = SEPs 
-            X_key[:, 0] = self.SEP
+        inp_len = X_query.shape[1] + X_key.shape[1] - 1
+        # replace <EOS> at the end of key by <SEP>
+        if X_key[0, -1] != self.SEP:
+            X_key[:, -1] = self.SEP
 
         # shape(b, inp_len)).
-        # out_len: <SOS>-Qcard1-<SEP>-Qcard2-<SEP>-Kcard
-        X_querykey = torch.cat([X_query, X_key], dim=-1)
-        l = X_querykey.shape[1]
+        # out_len: <SOS>KeyContent<SEP>QueryContents<EOS><PAD><PAD><PAD><PAD><PAD>
+        X_keyquery = torch.cat([X_key, X_query[:, 1:]], dim=-1) # remove <SOS> from query
+        assert X_keyquery.shape[1] == inp_len
 
-        # shape(b, l, embed_dim)
-        inp_embed = self.inp_querykey_layer(X_querykey)
-        assert inp_embed.shape == (b, l, self.d_model)
-        # shape(batch_size=b, inp_len)
-        inp_pads = torch.zeros(X_querykey.shape).type_as(X_querykey).int()
+        # shape(b, inp_len, embed_dim)
+        inp_embed = self.inp_querykey_layer(X_keyquery)
+        assert inp_embed.shape == (b, inp_len, self.d_model)
+        # shape(b, inp_len)
+        inp_pads = (X_keyquery == self.PAD).int()
         # shape(b, inp_len, d_model) 
         decoder_out = self.querykey_decoder(inp_embed, inp_pads)
-        assert decoder_out.shape == (b, l, self.d_model)
-        return decoder_out, X_querykey
-
+        assert decoder_out.shape == (b, inp_len, self.d_model)
+        return decoder_out, X_keyquery
 
 
 class Classifier(nn.Module):

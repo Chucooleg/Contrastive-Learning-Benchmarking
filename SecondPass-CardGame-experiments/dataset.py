@@ -74,9 +74,9 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
                 y_j_tensor, # query
                 x_i_tensor, # gt key
                 # shape(2 + 2*num attributes,)
-                torch.tensor([self.SOS] + y_vocab_tokens).long(), # query
+                torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # query
                 # shape(1 + num attributes,)
-                torch.tensor([self.SOS] + x_vocab_tokens).long(), # gt key
+                torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # gt key
                 # shape(key_support_size,)
             )
         else:
@@ -128,8 +128,8 @@ class GameDatasetValDataset(GameDatasetFromDataPoints):
             return (
                 y_j_tensor, # query idx
                 x_i_tensor, # key idx
-                torch.tensor([self.SOS] + y_vocab_tokens).long(), # X query
-                torch.tensor([self.SOS] + x_vocab_tokens).long(), # X key
+                torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+                torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # X key
                 gt_binary_tensor, # all gt key ids
             )
         else:
@@ -182,7 +182,7 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
         if self.embedding_by_property:
             return (
                 y_j_tensor, # query idx
-                torch.tensor([self.SOS] + y_vocab_tokens).long(), # query
+                torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # query
                 gt_binary_tensor, # all gt key ids
             )  
         else:

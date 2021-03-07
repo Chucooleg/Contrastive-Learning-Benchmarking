@@ -252,12 +252,14 @@ class GenerativeTrainModule(TrainModule):
         super().__init__(hparams, gt_distributions)
         self.model = generative_model.construct_full_model(hparams)
         self.logsoftmax = nn.LogSoftmax(dim=-1)
+        self.softmax = nn.Softmax(dim=-1)
         self.loss_criterion = LabelSmoothedLoss(
             K=self.vocab_size, 
-            padding_idx=self.vocab_size-1, # <PAD> is last token of vocab 
+            padding_idx=hparams['PAD'], 
             smoothing_const=hparams['loss_smoothing_const'], 
             temperature_const=hparams['loss_temperature_const'])
         self.batch_size = self.hparams['batch_size']
+        self.PAD = self.hparams['PAD']
         self.SEP = self.hparams['SEP']
         self.EOS = self.hparams['EOS']
         self.make_EOSs()
@@ -278,49 +280,43 @@ class GenerativeTrainModule(TrainModule):
         X_query: (b, len_q)
         '''
         b, len_q = X_query.shape
-        l = logits.shape[2]
-
-        # check that logits in the query part is the same for all keys
-        assert torch.allclose(input=logits[:,0,:len_q,:], other=logits[:,-1,:len_q,:])    
+        l = logits.shape[2]  
 
         # shape (b, key_support_size, inp_len, V)
         # softmax normalize over all words for a give position
         log_probs_all = self.logsoftmax(logits)
 
         # create groundtruth index for word choices
+
         # shape ((b, key_support_size, len_q))
-        X_query_tiled = X_query.unsqueeze(1).repeat(1, self.key_support_size, 1)
-        assert X_query_tiled.shape == (b, self.key_support_size, len_q)
+        # remove <SOS>, keep <EOS> 
+        X_query_tiled = X_query[:,1:].unsqueeze(1).repeat(1, self.key_support_size, 1)
+
         # shape ((b, key_support_size, len_k))
+        # keep <SOS>, keep <SEP>
         X_key_tiled = self.model.all_keys.unsqueeze(0).repeat(b, 1, 1)
-        assert (X_key_tiled.shape[0] == b) and (X_key_tiled.shape[1] == self.key_support_size)
+        assert (
+            (X_key_tiled.shape[0] == b) and 
+            (X_key_tiled.shape[1] == self.key_support_size))
+
         # shape (b, key_support_size, inp_len, 1) 
-        word_choices = torch.cat([X_query_tiled, X_key_tiled], dim=-1).unsqueeze(-1)
+        word_choices = torch.cat([X_key_tiled, X_query_tiled], dim=-1).unsqueeze(-1)
 
         # shape (b, key_support_size, inp_len)
         log_probs_sentence = torch.gather(input=log_probs_all, dim=-1, index=word_choices).squeeze(-1)
         
         # shape (b, key_support_size)
-        # log prob scores for each sentence
+        # log prob scores for each sentence, log pxy
         log_probs = torch.sum(log_probs_sentence, dim=-1)
 
-        # shape (b, key_support_size)
-        # normalize over sentences for all keys
-        probs = torch.exp(log_probs)
-        probs_normalized = probs / torch.sum(probs, dim=-1).unsqueeze(-1)
+        # # shape (b, key_support_size)
+        # # normalize over sentences for all keys
+        # probs = torch.exp(log_probs)
+        # probs_normalized = probs / torch.sum(probs, dim=-1).unsqueeze(-1)
+        probs_normalized = self.softmax(log_probs)
         
         # shape (b, key_support_size)
         return probs_normalized
-
-    def make_labels(self, X_querykey):
-        '''
-        X_querykey: shape (b, inp_len)
-        '''
-        b, inp_len = X_querykey.shape
-        EOSs = self.EOSs[:b].unsqueeze(-1)
-        labels = torch.cat([X_querykey[:, 1:], EOSs], dim=-1)
-        assert (labels.shape == (b, inp_len)), f'labels has shape {labels.shape}'
-        return labels
 
     ###################################################
 
@@ -328,8 +324,8 @@ class GenerativeTrainModule(TrainModule):
         '''
         X_queryId: (b, 1)
         X_keyId: (b, 1)
-        X_query: (b, len_q)
-        X_key: (b, len_k)
+        X_query: (b, len_q) # include <SOS> and <EOS>
+        X_key: (b, len_k) # include <SOS> and <EOS>
         val_bool: boolean. Compute metrics such as acc, precision, recall, f1 based on queries.
         full_test_bool: boolean. Compute metrics. Further breakdown by null and nonNull queries.
         '''
@@ -338,37 +334,36 @@ class GenerativeTrainModule(TrainModule):
         if X_key is not None:
             len_k = X_key.shape[1]
             assert len_k == self.hparams['len_k']
-        else:
-            len_k = self.hparams['len_k']
 
         # logits shape (b, key_support_size, inp_len, V) if from_support else (b, inp_len, V)
-        # X_querykey shape (b, inp_len)
+        # X_querykey shape (b, inp_len), inp_len = (len_q + len_k - 1)
         logits, X_querykey = self.model(X_query, X_key, from_support=val_bool, debug=debug)
 
         if val_bool:
-            assert logits.shape == (b, self.key_support_size, len_q+len_k, self.vocab_size)
+            assert logits.shape == (b, self.key_support_size, len_q+len_k-1, self.vocab_size) # -1 : <EOS><SOS> merge into <SEP>
             assert X_querykey is None
         else:
-            assert logits.shape == (b, len_q+len_k, self.vocab_size)
-            assert X_querykey.shape == (b, len_q+len_k)
+            assert logits.shape == (b, len_q+len_k-1, self.vocab_size) 
+            assert X_querykey.shape == (b, len_q+len_k-1)
 
         # scalar
-        # TODO also compute loss for validation
-        labels = None if val_bool else self.make_labels(X_querykey)
-        loss, _ = (None, None) if val_bool else self.loss_criterion(logits=logits, labels=labels, debug=debug)
+        # logits include <SOS> not <EOS>; labels not include <SOS> include <EOS>
+        loss, _ = (None, None) if val_bool else self.loss_criterion(logits=logits[:,:-1,:], labels=X_querykey[:, 1:], debug=debug)
 
         # shape (b, key_support_size) 
         probs = self.score_sequence(logits, X_query) if val_bool else None
 
         # scalar
-        metrics, = self.metrics(
+        metrics = self.metrics(
             X_queryId=X_queryId,
             scores=probs, # shape (b,support)
+            threshold=1.0/self.hparams['key_support_size'],
             gt_binary=gt_binary,
             debug=debug, 
         ) if val_bool else None
 
         return logits, loss, _, metrics
+
     ###################################################
 
     def pull_representations(self, X_query, X_key):
@@ -400,8 +395,10 @@ class GenerativeTrainModule(TrainModule):
                 X_key[0], '\nloss:', loss,
             )
 
+        lr = self.optimizers().param_groups[0]['lr']
+
         # log
-        step_metrics = {**{'train_loss': loss}}
+        step_metrics = {**{'train_loss': loss, 'learning_rate': lr}}
         self.log_metrics(step_metrics)
         return loss
 
@@ -417,7 +414,10 @@ class GenerativeTrainModule(TrainModule):
             betas=(
                 self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
             eps=self.hparams['scheduled_adam_epsilon'],
-            correct_bias=True
+            correct_bias=True,
+            decay_lr=self.hparams["additional_lr_decay"],
+            decay_milestones=self.hparams["additional_lr_decay_milestones"], 
+            decay_gamma=self.hparams["additional_lr_decay_gamma"], 
         )
         return opt
 
@@ -508,14 +508,9 @@ class ContrastiveTrainModule(TrainModule):
                 'X_query:',X_query[0], '\nX_key:',
                 X_key[0], '\nloss:', loss,
             )
-        try:
-            lr = self.optimizers().param_groups[0]['lr']
-        except:
-            import pdb; pdb.set_trace()
-        # # https://forums.pytorchlightning.ai/t/access-modules-optimizers-in-a-callback/179/2
+        lr = self.optimizers().param_groups[0]['lr']
 
         # log
-        # step_metrics = {**{'train_loss': loss}}
         step_metrics = {**{'train_loss': loss, 'learning_rate': lr}}
         self.log_metrics(step_metrics)
         return loss

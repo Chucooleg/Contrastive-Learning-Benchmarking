@@ -61,7 +61,6 @@ class LRScheduledAdam(Optimizer):
         self.decay_milestones = decay_milestones[::-1]
         self.decay_gamma = decay_gamma
         self.lr_decay_scale = 1.0
-        self.step_num = 0
 
     def calc_step_size(self, step_num):
         '''

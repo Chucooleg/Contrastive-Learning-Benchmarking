@@ -81,6 +81,7 @@ def construct_full_model(hparams):
         d_model = hparams['d_model'],
         vocab_size = hparams['vocab_size'],
         SOS = hparams['SOS'],
+        PAD = hparams['PAD'],
         NULL = hparams['NULL'],
         num_attributes = hparams['num_attributes'], 
         num_attr_vals = hparams['num_attr_vals'], 
@@ -96,7 +97,7 @@ class EncoderPredictor(nn.Module):
     
     def __init__(
         self, inp_query_layer, inp_key_layer, query_encoder, key_encoder, classifier, 
-        key_support_size, d_model, vocab_size, SOS, NULL, num_attributes, num_attr_vals, repr_pos, 
+        key_support_size, d_model, vocab_size, SOS, PAD, NULL, num_attributes, num_attr_vals, repr_pos, 
         normalize_dotproduct, debug=False
         ):
         super().__init__()
@@ -110,6 +111,7 @@ class EncoderPredictor(nn.Module):
         self.d_model = d_model
         self.vocab_size = vocab_size
         self.SOS = SOS
+        self.PAD = PAD
         self.NULL = NULL
         self.num_attributes = num_attributes
         self.num_attr_vals = num_attr_vals
@@ -261,7 +263,7 @@ class EncoderPredictor(nn.Module):
             return inp_embed.squeeze(1)
 
         # shape(batch_size=b, inp_len)
-        inp_pads = torch.zeros(X.shape).type_as(X).int()
+        inp_pads = (X == self.PAD).int()
         # shape(b, l, d_model) 
         repr = self.query_encoder(inp_embed, inp_pads)
         # shape(b, d_model) 
@@ -283,7 +285,7 @@ class EncoderPredictor(nn.Module):
             # shape(b, embed_dim)
             return inp_embed.squeeze(1)
         # shape(batch_size=b, inp_len)
-        inp_pads = torch.zeros(X.shape).type_as(X).int()
+        inp_pads = (X == self.PAD).int()
         # shape(b, l, d_model) 
         repr = self.key_encoder(inp_embed, inp_pads)
         # shape(b, d_model)

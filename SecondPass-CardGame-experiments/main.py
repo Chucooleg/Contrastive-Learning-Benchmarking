@@ -75,8 +75,8 @@ def load_hparams(args, data):
 
         hparams['populate_logits_matrix'] = args.generate_full_matrix
         if hparams['embedding_by_property']:
-            hparams['max_len_q'] = data['max_len_q'] + 1 # <SOS>---
-            hparams['len_k'] = data['len_k'] + 1 # <SOS>---
+            hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
+            hparams['len_k'] = data['len_k'] + 2 # <SOS>---
         else:
             hparams['max_len_q'] = 1
             hparams['len_k'] = 1
@@ -284,7 +284,7 @@ def main(args):
         'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    project_name = 'ContrastiveLearning-cardgame-Debug-Shattering'
+    project_name = 'ContrastiveLearning-cardgame-Debug-Shattering-Two'
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:
