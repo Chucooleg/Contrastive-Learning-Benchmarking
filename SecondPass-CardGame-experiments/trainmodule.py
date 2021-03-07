@@ -286,6 +286,7 @@ class GenerativeTrainModule(TrainModule):
         # softmax normalize over all words for a give position
         log_probs_all = self.logsoftmax(logits)
 
+        #######################
         # create groundtruth index for word choices
 
         # shape ((b, key_support_size, len_q))
@@ -301,20 +302,29 @@ class GenerativeTrainModule(TrainModule):
 
         # shape (b, key_support_size, inp_len, 1) 
         word_choices = torch.cat([X_key_tiled, X_query_tiled], dim=-1).unsqueeze(-1)
-
         # shape (b, key_support_size, inp_len)
         log_probs_sentence = torch.gather(input=log_probs_all, dim=-1, index=word_choices).squeeze(-1)
-        
+        #######################
+
+        # filter out PADS
+
+
         # shape (b, key_support_size)
         # log prob scores for each sentence, log pxy
         log_probs = torch.sum(log_probs_sentence, dim=-1)
+
+        # back to probs
+
+
+        # divide by px py 
+         
 
         # # shape (b, key_support_size)
         # # normalize over sentences for all keys
         # probs = torch.exp(log_probs)
         # probs_normalized = probs / torch.sum(probs, dim=-1).unsqueeze(-1)
         probs_normalized = self.softmax(log_probs)
-        
+
         # shape (b, key_support_size)
         return probs_normalized
 
@@ -362,6 +372,9 @@ class GenerativeTrainModule(TrainModule):
             debug=debug, 
         ) if val_bool else None
 
+        # metrics = {'train_loss': loss} # TODO
+        # step_metrics = {**{'val_loss': loss}, **{'val_'+m:metrics[m] for m in metrics}}
+
         return logits, loss, _, metrics
 
     ###################################################
@@ -398,7 +411,7 @@ class GenerativeTrainModule(TrainModule):
         lr = self.optimizers().param_groups[0]['lr']
 
         # log
-        step_metrics = {**{'train_loss': loss, 'learning_rate': lr}}
+        step_metrics = {'train_loss': loss, 'learning_rate': lr}
         self.log_metrics(step_metrics)
         return loss
 
@@ -508,10 +521,12 @@ class ContrastiveTrainModule(TrainModule):
                 'X_query:',X_query[0], '\nX_key:',
                 X_key[0], '\nloss:', loss,
             )
+
+        global_step = self.global_step
         lr = self.optimizers().param_groups[0]['lr']
 
         # log
-        step_metrics = {**{'train_loss': loss, 'learning_rate': lr}}
+        step_metrics = {'train_loss': loss, 'learning_rate': lr, 'global_step':global_step}
         self.log_metrics(step_metrics)
         return loss
 

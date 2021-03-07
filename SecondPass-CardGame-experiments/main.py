@@ -284,7 +284,7 @@ def main(args):
         'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    project_name = 'ContrastiveLearning-cardgame-Debug-Shattering-Two'
+    project_name = 'ContrastiveLearning-cardgame-Debug-Shattering'
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:
