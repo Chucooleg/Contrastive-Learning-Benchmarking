@@ -140,7 +140,7 @@ class LabelSmoothedLoss(nn.Module):
         except:
             import pdb; pdb.set_trace()
 
-        return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs_smoothed), None
+        return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs_smoothed)
 
 
 ############################################################

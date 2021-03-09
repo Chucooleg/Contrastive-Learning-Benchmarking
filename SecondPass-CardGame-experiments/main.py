@@ -71,9 +71,10 @@ def load_hparams(args, data):
         hparams['SOS'] = data['SOS']
         hparams['EOS'] = data['EOS']
         hparams['PAD'] = data['PAD']
+        hparams['PLH'] = data['PLH']
         hparams['hold_out'] = data['hold_out']
 
-        hparams['populate_logits_matrix'] = args.generate_full_matrix
+        hparams['populate_prediction_matrix'] = args.generate_full_matrix
         if hparams['embedding_by_property']:
             hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
             hparams['len_k'] = data['len_k'] + 2 # <SOS>---
@@ -120,7 +121,7 @@ def gen_full_matrix(hparams):
     return gt
 
 
-def run_test(args, hparams, ckpt_name, gt, test_loader, trainmodule, ckpt_dir_PATH, figsize=(10,15)):
+def run_test(args, hparams, ckpt_name, gt, trainmodule, datamodule, ckpt_dir_PATH, figsize=(10,15)):
 
     checkpoint_PATH = os.path.join(ckpt_dir_PATH, ckpt_name) #'last.ckpt'
     checkpoint = torch.load(checkpoint_PATH, map_location=lambda storage, loc: storage)
@@ -134,19 +135,19 @@ def run_test(args, hparams, ckpt_name, gt, test_loader, trainmodule, ckpt_dir_PA
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
     )
+    res = trainer.test(model=trainmodule, datamodule=datamodule)
     
-    res = trainer.test(model=trainmodule, test_dataloaders=test_loader)
-    
-    if hparams['populate_logits_matrix']:  
-        model_distribution_res = trainmodule.pull_model_distribution(debug=hparams['debug'])
-        print('xy_hat_rank:', model_distribution_res['xy_hat_rank'])
-        print('xy_div_xyind_hat_rank:', model_distribution_res['xy_div_xyind_hat_rank'])
-        print('mi_hat:', model_distribution_res['mi_hat'])
-        print('mi_gt:', model_distribution_res['mi_gt'])
-        print('kl_div:', model_distribution_res['kl_div'])
+    # TODO uncomment this!!!!!!!!
+    # if hparams['populate_prediction_matrix']:  
+    #     model_distribution_res = trainmodule.pull_model_distribution(debug=hparams['debug'])
+    #     print('xy_hat_rank:', model_distribution_res['xy_hat_rank'])
+    #     print('xy_div_xyind_hat_rank:', model_distribution_res['xy_div_xyind_hat_rank'])
+    #     print('mi_hat:', model_distribution_res['mi_hat'])
+    #     print('mi_gt:', model_distribution_res['mi_gt'])
+    #     print('kl_div:', model_distribution_res['kl_div'])
 
-        plot_distribution(model_distribution_res['xy_hat'], model_distribution_res['xy_div_xyind_hat'], 'Model', figsize, show_img=False, save_dir=ckpt_dir_PATH)
-        plot_distribution(gt['xy'], gt['xy_div_xyind'],'Ground-Truth', figsize, show_img=False, save_dir=ckpt_dir_PATH)
+    #     plot_distribution(model_distribution_res['xy_hat'], model_distribution_res['xy_div_xyind_hat'], 'Model', figsize, show_img=False, save_dir=ckpt_dir_PATH)
+    #     plot_distribution(gt['xy'], gt['xy_div_xyind'],'Ground-Truth', figsize, show_img=False, save_dir=ckpt_dir_PATH)
 
 
 def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
@@ -172,6 +173,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
     trainer = pl.Trainer(
         gpus=[args.gpu], 
         min_epochs=2, max_epochs=hparams['max_epochs'], 
+        check_val_every_n_epoch=hparams['val_every_n_epoch'],
         precision=32, 
         logger=wd_logger,
         log_gpu_memory='all',
@@ -205,6 +207,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
     trainer = pl.Trainer(
         gpus=[args.gpu], 
         min_epochs=2, max_epochs=hparams['max_epochs'], 
+        check_val_every_n_epoch=hparams['val_every_n_epoch'],
         precision=32, 
         logger=wd_logger,
         log_gpu_memory='all',
@@ -262,7 +265,7 @@ def main(args):
 
     # model
     Module = ContrastiveTrainModule if hparams['model'] == 'contrastive' else GenerativeTrainModule
-    trainmodule =  Module(hparams, gt_distributions=gt if hparams['populate_logits_matrix'] else {})
+    trainmodule =  Module(hparams, gt_distributions=gt if hparams['populate_prediction_matrix'] else {})
     model_summary = pl.core.memory.ModelSummary(trainmodule, mode='full')
     print(model_summary,'\n')
 
@@ -271,6 +274,7 @@ def main(args):
         batch_size = hparams['batch_size'],
         raw_data = game_data,
         embedding_by_property = hparams['embedding_by_property'],
+        model_typ = hparams['model'],
         PAD=hparams['PAD'],
         debug=hparams['debug']
     )   
@@ -322,13 +326,14 @@ def main(args):
         )
     else: # test
         # testloader
-        test_loader = DataLoader(
-            GameTestFullDataset(
-                raw_data=game_data, embedding_by_property=hparams['embedding_by_property'] ,debug=hparams['debug']
-            ), 
-            batch_size=hparams['batch_size'], shuffle=False
-        )
-        run_test(args, hparams, args.ckpt_name, gt, test_loader, trainmodule, ckpt_dir_PATH, figsize=(10,15))
+        # test_loader = DataLoader(
+        #     GameTestFullDataset(
+        #         raw_data=game_data, embedding_by_property=hparams['embedding_by_property'], 
+        #         model_typ=hparams['model'],debug=hparams['debug']
+        #     ), 
+        #     batch_size=hparams['batch_size'], shuffle=False
+        # )
+        run_test(args, hparams, args.ckpt_name, gt, trainmodule, game_datamodule, ckpt_dir_PATH, figsize=(10,15))
 
     return trainmodule, game_datamodule
 

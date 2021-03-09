@@ -310,7 +310,7 @@ def gen_full_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_de
         'train_tokens': tokens,
         'val_tokens': None,
         'sparsity_estimate': 1.0 / num_keys,
-        'vocab_size': num_attributes * num_attr_vals + 7,
+        'vocab_size': num_attributes * num_attr_vals + 8,
         '(': num_attributes * num_attr_vals,
         ')': num_attributes * num_attr_vals + 1,
         'NULL': num_attributes * num_attr_vals + 2,
@@ -318,6 +318,7 @@ def gen_full_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_de
         'SOS': num_attributes * num_attr_vals + 4,
         'EOS': num_attributes * num_attr_vals + 5,
         'PAD': num_attributes * num_attr_vals + 6,
+        'PLH': num_attributes * num_attr_vals + 7,
     }
 
     for k in data:
@@ -354,7 +355,7 @@ def gen_random_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_
         'train_tokens': tokens[:N_train],
         'val_tokens': tokens[N_train:N_train+N_val],
         'sparsity_estimate': 1.0 / num_keys,
-        'vocab_size': num_attributes * num_attr_vals + 7,
+        'vocab_size': num_attributes * num_attr_vals + 8,
         '(': num_attributes * num_attr_vals,
         ')': num_attributes * num_attr_vals + 1,
         'NULL': num_attributes * num_attr_vals + 2,
@@ -362,6 +363,7 @@ def gen_random_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_
         'SOS': num_attributes * num_attr_vals + 4,
         'EOS': num_attributes * num_attr_vals + 5,
         'PAD': num_attributes * num_attr_vals + 6,
+        'PLH': num_attributes * num_attr_vals + 7,
     }
 
     for k in data:

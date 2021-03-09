@@ -7,13 +7,14 @@ import numpy as np
 
 class GameDatasetFromDataPoints(Dataset):
     
-    def __init__(self, raw_data, embedding_by_property, debug=False):
+    def __init__(self, raw_data, embedding_by_property, model_typ, debug=False):
         '''
         raw_data: object returned by sample_dataset()
         '''
         super().__init__()
         self.raw_data = raw_data
         self.embedding_by_property = embedding_by_property
+        self.model_typ = model_typ
         self.debug = debug
         self.num_attributes = self.raw_data['num_attributes']
         self.num_attr_vals = self.raw_data['num_attr_vals']
@@ -28,6 +29,7 @@ class GameDatasetFromDataPoints(Dataset):
         self.SOS = self.raw_data['SOS']
         self.EOS = self.raw_data['EOS']
         self.PAD = self.raw_data['PAD']
+        self.PLH = self.raw_data['PLH']
         self.hold_out = self.raw_data['hold_out']
 
         self.decode_key_to_vocab_token = decode_key_to_vocab_token
@@ -45,8 +47,8 @@ class GameDatasetFromDataPoints(Dataset):
 class GameDatasetTrainDataset(GameDatasetFromDataPoints):
     '''Sample from Presampled Datapoints. Better for Sparse distribution matrix.'''
     
-    def __init__(self, raw_data, embedding_by_property, debug=False):
-        super().__init__(raw_data, embedding_by_property, debug)
+    def __init__(self, raw_data, embedding_by_property, model_typ, debug=False):
+        super().__init__(raw_data, embedding_by_property, model_typ, debug)
         self.split = 'train'
         
     def __len__(self):
@@ -69,30 +71,37 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
         y_j_tensor = torch.tensor([y_j]).long()
         x_i_tensor = torch.tensor([x_i]).long()
 
-        if self.embedding_by_property:
+        if self.model_typ == 'generative':
             return (
                 y_j_tensor, # query
                 x_i_tensor, # gt key
                 # shape(2 + 2*num attributes,)
-                torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # query
-                # shape(1 + num attributes,)
-                torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # gt key
-                # shape(key_support_size,)
+                torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + x_vocab_tokens + [self.EOS]).long(), # X querykey
             )
         else:
-            return (
-                y_j_tensor, # query
-                x_i_tensor, # gt key
-                y_j_tensor, # query
-                x_i_tensor, # gt key
-            )
+            if self.embedding_by_property:
+                return (
+                    y_j_tensor, # query idx
+                    x_i_tensor, # key idx
+                    # shape(2 + 2*num attributes,)
+                    torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+                    # shape(1 + num attributes,)
+                    torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # X key
+                )
+            else:
+                return (
+                    y_j_tensor, # query idx
+                    x_i_tensor, # key idx
+                    y_j_tensor, # X query
+                    x_i_tensor, # X key
+                )
 
 
 class GameDatasetValDataset(GameDatasetFromDataPoints):
     '''Sample from Presampled Datapoints. Better for Sparse distribution matrix.'''
     
-    def __init__(self, raw_data, embedding_by_property, debug=False):
-        super().__init__(raw_data, embedding_by_property, debug)
+    def __init__(self, raw_data, embedding_by_property, model_typ, debug=False):
+        super().__init__(raw_data, embedding_by_property, model_typ, debug)
         if self.hold_out:
             self.split = 'val'
         else:
@@ -124,29 +133,39 @@ class GameDatasetValDataset(GameDatasetFromDataPoints):
         x_i_tensor = torch.tensor([x_i]).long()
         gt_binary_tensor = torch.tensor(gt_binary).long()
 
-        if self.embedding_by_property:
+        if self.model_typ == 'generative':
+            assert self.embedding_by_property
             return (
                 y_j_tensor, # query idx
                 x_i_tensor, # key idx
-                torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
-                torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # X key
+                torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + x_vocab_tokens + [self.EOS]).long(), # X querykey
                 gt_binary_tensor, # all gt key ids
             )
         else:
-            return (
-                y_j_tensor, # query idx
-                x_i_tensor, # key idx
-                y_j_tensor, # X query
-                x_i_tensor, # X key
-                gt_binary_tensor, # all gt key ids
-            )
+            if self.embedding_by_property:
+                return (
+                    y_j_tensor, # query idx
+                    x_i_tensor, # key idx
+                    torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+                    torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # X key
+                    gt_binary_tensor, # all gt key ids
+                )
+            else:
+                return (
+                    y_j_tensor, # query idx
+                    x_i_tensor, # key idx
+                    y_j_tensor, # X query
+                    x_i_tensor, # X key
+                    gt_binary_tensor, # all gt key ids
+                ) 
 
 
 class GameTestFullDataset(GameDatasetFromDataPoints):
     
-    def __init__(self, raw_data, embedding_by_property, debug=False):
-        super().__init__(raw_data, embedding_by_property, debug)
-        
+    def __init__(self, raw_data, embedding_by_property, model_typ, debug=False):
+        super().__init__(raw_data, embedding_by_property, model_typ, debug)
+        self.dummy_x_vocab_tokens = [self.PLH] * len(raw_data['train_tokens'][0][1])
+
     def __len__(self):
         return self.raw_data['query_support_size']
     
@@ -164,10 +183,6 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
         gt_idxs = gt_key_list
         gt_binary = self.make_gt_binary(gt_idxs)
 
-        # if self.embedding_by_property:
-        #     y_vocab_tokens = self.decode_query_to_vocab_token(
-        #         self.num_attributes, self.num_attr_vals, self.num_cards_per_query, y_j, self.nest_depth_int)
-
         if self.debug:
             y_vocab_tokens = self.decode_query_to_vocab_token(
                 self.num_attributes, self.num_attr_vals, self.num_cards_per_query, y_j, self.nest_depth_int)
@@ -179,15 +194,22 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
         y_j_tensor = torch.tensor([y_j]).long()
         gt_binary_tensor = torch.tensor(gt_binary).long()
 
-        if self.embedding_by_property:
+        if self.model_typ == 'generative':
             return (
                 y_j_tensor, # query idx
-                torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # query
+                torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + self.dummy_x_vocab_tokens + [self.EOS]).long(), # X_query_only
                 gt_binary_tensor, # all gt key ids
             )  
         else:
-            return (
-                y_j_tensor, # query idx
-                y_j_tensor, # query
-                gt_binary_tensor, # all gt key ids
-            )
+            if self.embedding_by_property:
+                return (
+                    y_j_tensor, # query idx
+                    torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # query
+                    gt_binary_tensor, # all gt key ids
+                )  
+            else:
+                return (
+                    y_j_tensor, # query idx
+                    y_j_tensor, # query
+                    gt_binary_tensor, # all gt key ids
+                )

@@ -231,10 +231,13 @@ class MultiHeadAttention(nn.Module):
         # XQ shape(b, h, n, d_k)
         # YK shape(b, h, m, d_k)
         # YV shape(b, h, m, d_k)
-        XQ, YK, YV = [
-                      W(vals).reshape(b, -1, self.h, self.d_k)
-                      .transpose(1, 2) 
-                      for (W, vals) in zip(self.projections_QKVO[:3], (X, Y, Y))]
+        try:
+            XQ, YK, YV = [
+                        W(vals).reshape(b, -1, self.h, self.d_k)
+                        .transpose(1, 2) 
+                        for (W, vals) in zip(self.projections_QKVO[:3], (X, Y, Y))]
+        except:
+            import pdb; pdb.set_trace()
 
         # attention weighted values, attention weights
         # shape (b, n, h, d_k), (b, h, n, m)

@@ -8,15 +8,14 @@ def powerset(iterable):
     return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
 
 
-LOOKUP10 = {i:q for i, q in enumerate(powerset([i for i in range(10)]))}
-LOOKUP10[0] = (10,)
+LOOKUP10 = {i:list(q) for i, q in enumerate(powerset([i for i in range(10)])) if i != 0}
 
 ################################################################################################
 def decode_key_to_vocab_token(num_attributes, num_attr_vals, key_idx):
     return [key_idx]
 
 def decode_query_to_vocab_token(num_attributes, num_attr_vals, num_cards_per_query, query_idx, nest_depth_int):
-    # HACK for now
+    # HACK
     assert num_attr_vals == 10
     return LOOKUP10[query_idx]
 
@@ -24,16 +23,13 @@ def decode_query_to_vocab_token(num_attributes, num_attr_vals, num_cards_per_que
 def evaluate_query_idx(num_attributes, num_attr_vals, num_cards_per_query, query_idx, nest_depth_int):
     raise NotImplementedError
 
-
 def construct_full_matrix(num_attributes, num_attr_vals, num_cards_per_query, nest_depth_int):
     K = num_attr_vals
-    queries = list(powerset([i for i in range(K)]))
+    queries = list(powerset([i for i in range(K)]))[1:]
     num_queries = len(queries)
-    count_table = np.zeros((K+1, num_queries)) # with null card
+    count_table = np.zeros((K, num_queries)) # no null
 
     for q_i, q in enumerate(queries):
-        if not q:  # null card for empty set
-            count_table[K, q_i] += 1 
         for k in q:
             count_table[k, q_i] += 1 
             
@@ -66,7 +62,6 @@ def report_countable_distribution(count_table):
 def gen_full_matrices(num_attributes, num_attr_vals, num_cards_per_query, nest_depth_int):
     count_table = construct_full_matrix(num_attributes, num_attr_vals, num_cards_per_query, nest_depth_int)
     return report_countable_distribution(count_table)
-
 
 def gen_full_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_depth_int):
     
@@ -109,7 +104,7 @@ def gen_full_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_de
         'train_tokens': tokens,
         'val_tokens': None,
         'sparsity_estimate': sum(lens) / ((K+1) * num_queries),
-        'vocab_size': base_vocab_size + 7,
+        'vocab_size': base_vocab_size + 8,
         '(': base_vocab_size,
         ')': base_vocab_size + 1,
         'NULL': base_vocab_size + 2,
@@ -117,6 +112,7 @@ def gen_full_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_de
         'SOS': base_vocab_size + 4,
         'EOS': base_vocab_size + 5,
         'PAD': base_vocab_size + 6,
+        'PLH': base_vocab_size + 7,
     }
     
     return data
