@@ -115,10 +115,13 @@ class TrainModule(pl.LightningModule):
         metric_names = outputs[0].keys()
         for m in metric_names:
             if not ('max_memory_alloc_cuda' in m ):
-                try:
+                if isinstance(outputs[0][m], torch.Tensor):
                     epoch_metrics['avg_'+m] = torch.stack([x[m] for x in outputs]).mean()
-                except:
+                elif isinstance(outputs[0][m], float) or isinstance(outputs[0][m], int):
+                    epoch_metrics['avg_'+m] = sum([x[m] for x in outputs]) / len(outputs)
+                else:
                     import pdb; pdb.set_trace()
+
         self.log_metrics(epoch_metrics)
         return epoch_metrics         
     
@@ -306,8 +309,8 @@ class GenerativeTrainModule(TrainModule):
 
             if self.extra_monitors:
                 # NOTE temp metrics to debug simple shatter, doesn't work for SET
-                argmax_key_accuracy = self.compute_argmax_accuracy(X_query_allkeys[:,0,:,:], query_allkey_logits[:,0,:])
-                topk_key_accuracy = self.compute_topK_accuracy(X_query_allkeys[:,0,:,:], query_allkey_logits[:,0,:]) 
+                argmax_key_accuracy = self.compute_argmax_accuracy(X_query_allkeys[:,0,:], query_allkey_logits[:,0,:,:])
+                topk_key_accuracy = self.compute_topK_accuracy(X_query_allkeys[:,0,:], query_allkey_logits[:,0,:,:]) 
                 extra_metrics = {
                     'argmax_key_accuracy':argmax_key_accuracy, 'topk_key_accuracy':topk_key_accuracy
                     }

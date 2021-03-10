@@ -7,7 +7,7 @@
     "d_model": 11,
     "embed_dropout": 0.0,
 
-    "model": "contrastive",
+    "model": "generative",
 
     "embedding_by_property": true,
     "encoder": "transformer",
@@ -42,10 +42,10 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-09,
-    "scheduled_adam_warmup_steps": 8000,
+    "scheduled_adam_warmup_steps": 20000,
 
     "additional_lr_decay": true,
-    "additional_lr_decay_milestones": [11000,11250,11500,11750,12000,12250,12500,12750,13000,13250,13500,13750,14000],
+    "additional_lr_decay_milestones": [20000,20250,20500,20750,21000,21250,21500,21750,22000,22250,22500,22750,14000],
     "additional_lr_decay_gamma": 0.9,
 
     "gradient_clip_val": 0,

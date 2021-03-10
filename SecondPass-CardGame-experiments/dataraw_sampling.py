@@ -8,7 +8,7 @@ def powerset(iterable):
     return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
 
 
-LOOKUP10 = {i:list(q) for i, q in enumerate(powerset([i for i in range(10)])) if i != 0}
+LOOKUP10 = {i-1:list(q) for i, q in enumerate(powerset([i for i in range(10)])) if i != 0}
 
 ################################################################################################
 def decode_key_to_vocab_token(num_attributes, num_attr_vals, key_idx):
@@ -66,35 +66,28 @@ def gen_full_matrices(num_attributes, num_attr_vals, num_cards_per_query, nest_d
 def gen_full_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_depth_int):
     
     K = num_attr_vals
-    queries = list(powerset([i for i in range(K)]))
+    queries = list(powerset([i for i in range(K)]))[1:]  # no null
     num_queries = len(queries)
     datapoints = []
     tokens = []
     lens = []
-    count_table = np.zeros((K+1, num_queries)) # null card +1
+    count_table = np.zeros((K, num_queries))  # no null
 
     for q_i, q in enumerate(queries):
-        
-        if not q: # null card for empty set
-            lens.append(1)
-            datapoints.append((q_i, K))
-            tokens.append(((K,), (K,)))
-            count_table[K, q_i] += 1 
-        else:
-            lens.append(len(q))
-            for k in q:
-                datapoints.append((q_i, k))
-                tokens.append((q, (k,)))
-                count_table[k, q_i] += 1 
+        lens.append(len(q))
+        for k in q:
+            datapoints.append((q_i, k))
+            tokens.append((q, (k,)))
+            count_table[k, q_i] += 1 
     
-    base_vocab_size = K+1
+    base_vocab_size = K
     
     data = {
         'num_attributes': 1,
         'num_attr_vals': K,
         'num_cards_per_query': K,
         'nest_depth_int': 1,
-        'key_support_size': K+1,
+        'key_support_size': K,
         'query_support_size': num_queries,
         'max_len_q': K,
         'len_k': 1,
@@ -103,7 +96,7 @@ def gen_full_dataset(num_attributes, num_attr_vals, num_cards_per_query, nest_de
         'val_datapoints': None,
         'train_tokens': tokens,
         'val_tokens': None,
-        'sparsity_estimate': sum(lens) / ((K+1) * num_queries),
+        'sparsity_estimate': sum(lens) / ((K) * num_queries),
         'vocab_size': base_vocab_size + 8,
         '(': base_vocab_size,
         ')': base_vocab_size + 1,
