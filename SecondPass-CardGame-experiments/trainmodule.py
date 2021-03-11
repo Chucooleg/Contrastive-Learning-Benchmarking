@@ -292,10 +292,13 @@ class GenerativeTrainModule(TrainModule):
             # shape (b, key_support_size) 
             log_pxy = self.score_sequences(X_query_allkeys, query_allkey_logits)
 
-            # shape (b, key_support_size)
-            pred_log_pxyind = self.make_pred_log_pxyind(X_queryId)
-            # shape (b, key_support_size)
-            pmi = log_pxy - pred_log_pxyind
+            if self.classify_with_pmi:
+                # shape (b, key_support_size)
+                pred_log_pxyind = self.make_pred_log_pxyind(X_queryId)
+                # shape (b, key_support_size)
+                pmi = log_pxy - pred_log_pxyind
+            else:
+                pmi = None
 
             # dict
             log_scores = pmi if self.classify_with_pmi else log_pxy

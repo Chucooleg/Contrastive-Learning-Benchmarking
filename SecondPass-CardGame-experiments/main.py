@@ -56,7 +56,7 @@ def load_hparams(args, data):
     with open(args.config_path, 'r') as f:
         hparams = json.load(f)
 
-    if args.mode == 'train':
+    if args.mode in ('train', 'param_summary'):
         hparams['key_support_size'] = data['key_support_size']
         hparams['query_support_size'] = data['query_support_size']
         hparams['num_attributes'] = data['num_attributes']
@@ -215,7 +215,6 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         gradient_clip_val=hparams['gradient_clip_val'],
         callbacks=[checkpoint_callback, lr_monitor],
         profiler="simple"
-        # val_check_interval=1000,
         # num_sanity_val_steps=0,
     )
 
@@ -230,7 +229,7 @@ def validate_inputs(args, hparams):
     assert os.path.exists(args.config_path), 'config_path does not exist'
     assert os.path.exists(args.data_path), 'data_path does not exist' 
     assert os.path.exists(args.checkpoint_dir), f'checkpoint_dir {args.checkpoint_dir} does not exist'
-    assert args.mode in ('train', 'resume_train', 'test_full')
+    assert args.mode in ('train', 'resume_train', 'test_full', 'param_summary')
     if args.mode in ('resume_train', 'test_full'):
         assert args.runID, 'missing runID, e.g. 1lygiuq3'
         assert args.project_name, 'missing project_name. e.g. ContrastiveLearning-cardgame-Scaling'
@@ -269,6 +268,9 @@ def main(args):
     model_summary = pl.core.memory.ModelSummary(trainmodule, mode='full')
     print(model_summary,'\n')
 
+    if args.mode == 'param_summary':
+        sys.exit(1)
+
     # dataset
     game_datamodule = GameDataModule(
         batch_size = hparams['batch_size'],
@@ -288,7 +290,7 @@ def main(args):
         'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    project_name = 'ContrastiveLearning-cardgame-Debug-Shattering'
+    project_name = 'ContrastiveLearning-cardgame-Shattering'
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:

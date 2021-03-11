@@ -9,6 +9,8 @@ def powerset(iterable):
 
 
 LOOKUP10 = {i-1:list(q) for i, q in enumerate(powerset([i for i in range(10)])) if i != 0}
+LOOKUP20 = {i-1:list(q) for i, q in enumerate(powerset([i for i in range(20)])) if i != 0}
+LOOKUP15 = {i-1:list(q) for i, q in enumerate(powerset([i for i in range(15)])) if i != 0}
 
 ################################################################################################
 def decode_key_to_vocab_token(num_attributes, num_attr_vals, key_idx):
@@ -17,7 +19,7 @@ def decode_key_to_vocab_token(num_attributes, num_attr_vals, key_idx):
 def decode_query_to_vocab_token(num_attributes, num_attr_vals, num_cards_per_query, query_idx, nest_depth_int):
     # HACK
     assert num_attr_vals == 10
-    return LOOKUP10[query_idx]
+    return LOOKUP15[query_idx]
 
 ################################################################################################
 def evaluate_query_idx(num_attributes, num_attr_vals, num_cards_per_query, query_idx, nest_depth_int):
