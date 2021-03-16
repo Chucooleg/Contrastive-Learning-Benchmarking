@@ -13,39 +13,24 @@ def construct_full_model(hparams):
     return: nn.Module.
     '''
     # embeddings
-    if hparams['embedding_by_property'] and hparams['encoder'] == 'transformer':
-        query_embed_X = ScaledEmbedding(
-            V=hparams['vocab_size'],
-            d_model=hparams['d_model'], 
-            init_option='transformer'
-        )
-        key_embed_X = query_embed_X # point to the same embedding matrix
-    else:
-        query_embed_X = ScaledEmbedding(
-            V=hparams['query_support_size'], 
-            d_model=hparams['d_model'], 
-            init_option='w2v'
-        )
-        key_embed_X = ScaledEmbedding(
-            V=hparams['key_support_size'], 
-            d_model=hparams['d_model'], 
-            init_option='w2v'
-        )
+    query_embed_X = ScaledEmbedding(
+        V=hparams['vocab_size'],
+        d_model=hparams['d_model'], 
+        init_option='transformer'
+    )
+    key_embed_X = query_embed_X # point to the same embedding matrix
     
     embed_dropout = nn.Dropout(hparams['embed_dropout'])
 
     # encoders
-    if hparams['embedding_by_property'] and hparams['encoder'] == 'transformer':
-        query_encoder = construct_transformer_encoder(hparams)
-        key_encoder = construct_transformer_encoder(hparams)
-    else:
-        query_encoder, key_encoder = None, None
+    query_encoder = construct_transformer_encoder(hparams)
+    key_encoder = construct_transformer_encoder(hparams)
 
     position_encoder = LearnedPositionEncoder(
         d_model=hparams['d_model'], 
         max_len=max(hparams['max_len_q'], hparams['len_k']),
         emb_init_var=torch.var(query_embed_X.embedding.weight).cpu().item()
-    ) if hparams['embedding_by_property'] else None
+    )
 
     inp_query_layer = [
         ('scaled_embed', query_embed_X), 

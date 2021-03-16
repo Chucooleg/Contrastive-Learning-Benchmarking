@@ -15,11 +15,8 @@ import wandb
 wandb.login()
 from pytorch_lightning.loggers import WandbLogger
 
-from dataraw_sampling import gen_full_matrices
-from util_distribution import plot_distribution
-from dataset import GameTestFullDataset
-from datamodule import GameDataModule
-from trainmodule import ContrastiveTrainModule, GenerativeTrainModule
+from datamodule import GameDataModule, ReprsentationStudyDataModule
+from trainmodule import ContrastiveTrainModule, GenerativeTrainModule, ContrastiveReprStudyModule, GenerativeReprStudyModule
 
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
@@ -42,13 +39,23 @@ def load_data(data_path):
     return data
 
 
-def validate_data(data):
-    for key in (
-        'key_support_size', 'query_support_size', 
+def validate_data(args, data):
+    if args.mode == 'repr_study':
+        required_keys = (
+        'key_support_size', 
         'num_attributes', 'num_attr_vals', 
-        'train_datapoints', 'val_datapoints',
-        'sparsity_estimate'
-    ):
+        'repr_study_tokens',
+        )
+    else:
+        required_keys = (
+        'key_support_size', 
+        'num_attributes', 'num_attr_vals', 
+        'train_key_datapoints', 'val_key_datapoints', 'test_key_datapoints',
+        'train_gt_idxs', 'val_gt_idxs', 'test_gt_idxs',
+        'train_tokens', 'val_tokens', 'test_tokens'
+        ) 
+
+    for key in required_keys:
         assert key in data, f'{key} not found in data'
         
 
@@ -58,10 +65,8 @@ def load_hparams(args, data):
 
     if args.mode in ('train', 'param_summary'):
         hparams['key_support_size'] = data['key_support_size']
-        hparams['query_support_size'] = data['query_support_size']
         hparams['num_attributes'] = data['num_attributes']
         hparams['num_attr_vals'] = data['num_attr_vals']
-        hparams['num_cards_per_query'] = data['num_cards_per_query']
         hparams['nest_depth_int'] = data['nest_depth_int']
         hparams['vocab_size'] = data['vocab_size']
         hparams['('] = data['(']
@@ -72,23 +77,13 @@ def load_hparams(args, data):
         hparams['EOS'] = data['EOS']
         hparams['PAD'] = data['PAD']
         hparams['PLH'] = data['PLH']
-        hparams['hold_out'] = data['hold_out']
+        hparams['&'] = data['&']
+        hparams['|'] = data['|']
 
-        hparams['populate_prediction_matrix'] = args.generate_full_matrix
-        if hparams['embedding_by_property']:
-            hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
-            hparams['len_k'] = data['len_k'] + 2 # <SOS>---
-        else:
-            hparams['max_len_q'] = 1
-            hparams['len_k'] = 1
+        hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS> <EOS>
+        hparams['len_k'] = data['len_k'] + 2 # <SOS> <EOS>
 
         assert hparams['model'] in ("contrastive", "generative")
-        if hparams['embedding_by_property']:
-            assert hparams["encoder"] in ('transformer')
-            assert hparams["decoder"] in ('transformer')
-        else:
-            hparams["encoder"] = 'lookup'
-            hparams["decoder"] = 'lookup'
 
     if hparams['model'] == 'contrastive' and (not 'contrastive_use_infoNCE' in hparams):
         hparams['contrastive_use_infoNCE'] = True
@@ -105,23 +100,26 @@ def load_hparams(args, data):
     return hparams  
 
 
-def gen_full_matrix(hparams):
-    print('Generating Full Matrix')
-    count_table, xy, xyind, xy_div_xyind, distribution = gen_full_matrices(
-        hparams['num_attributes'], hparams['num_attr_vals'], hparams['num_cards_per_query'], hparams['nest_depth_int']
+def run_repr_study(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH, repr_out_path):
+
+    checkpoint_PATH = os.path.join(ckpt_dir_PATH, ckpt_name) #'last.ckpt'
+    checkpoint = torch.load(checkpoint_PATH, map_location=lambda storage, loc: storage)
+    trainmodule.load_state_dict(checkpoint['state_dict'])
+
+    trainmodule.repr_out_path = repr_out_path
+
+    trainer = pl.Trainer(
+        gpus=[args.gpu],
+        min_epochs=1, max_epochs=1, 
+        precision=32, 
+        log_gpu_memory='all',
+        weights_summary = 'full',
+        gradient_clip_val=hparams['gradient_clip_val'],
     )
-    gt = {
-        'count_table':count_table,
-        'xy':xy,
-        'xyind':xyind,
-        'xy_div_xyind':xy_div_xyind,
-        'distribution':distribution
-    }
-    print(distribution)
-    return gt
+    trainer.test(model=trainmodule, datamodule=datamodule)
 
 
-def run_test(args, hparams, ckpt_name, gt, trainmodule, datamodule, ckpt_dir_PATH, figsize=(10,15)):
+def run_test(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH):
 
     checkpoint_PATH = os.path.join(ckpt_dir_PATH, ckpt_name) #'last.ckpt'
     checkpoint = torch.load(checkpoint_PATH, map_location=lambda storage, loc: storage)
@@ -135,19 +133,7 @@ def run_test(args, hparams, ckpt_name, gt, trainmodule, datamodule, ckpt_dir_PAT
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
     )
-    res = trainer.test(model=trainmodule, datamodule=datamodule)
-    
-    # TODO uncomment this!!!!!!!!
-    # if hparams['populate_prediction_matrix']:  
-    #     model_distribution_res = trainmodule.pull_model_distribution(debug=hparams['debug'])
-    #     print('xy_hat_rank:', model_distribution_res['xy_hat_rank'])
-    #     print('xy_div_xyind_hat_rank:', model_distribution_res['xy_div_xyind_hat_rank'])
-    #     print('mi_hat:', model_distribution_res['mi_hat'])
-    #     print('mi_gt:', model_distribution_res['mi_gt'])
-    #     print('kl_div:', model_distribution_res['kl_div'])
-
-    #     plot_distribution(model_distribution_res['xy_hat'], model_distribution_res['xy_div_xyind_hat'], 'Model', figsize, show_img=False, save_dir=ckpt_dir_PATH)
-    #     plot_distribution(gt['xy'], gt['xy_div_xyind'],'Ground-Truth', figsize, show_img=False, save_dir=ckpt_dir_PATH)
+    trainer.test(model=trainmodule, datamodule=datamodule)
 
 
 def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
@@ -229,18 +215,18 @@ def validate_inputs(args, hparams):
     assert os.path.exists(args.config_path), 'config_path does not exist'
     assert os.path.exists(args.data_path), 'data_path does not exist' 
     assert os.path.exists(args.checkpoint_dir), f'checkpoint_dir {args.checkpoint_dir} does not exist'
-    assert args.mode in ('train', 'resume_train', 'test_full', 'param_summary')
-    if args.mode in ('resume_train', 'test_full'):
+    assert args.mode in ('train', 'resume_train', 'test_full', 'param_summary', 'repr_study')
+    if args.mode in ('resume_train', 'test_full', 'repr_study'):
         assert args.runID, 'missing runID, e.g. 1lygiuq3'
         assert args.project_name, 'missing project_name. e.g. ContrastiveLearning-cardgame-Scaling'
-    if args.mode == 'test_full':
+    if args.mode in ('test_full', 'repr_study'):
         assert args.ckpt_name, 'missing ckpt_name for testing. e.g. last.ckpt'
 
 
 def main(args):
 
     game_data = load_data(args.data_path)
-    validate_data(game_data)
+    validate_data(args, game_data)
     hparams = load_hparams(args, game_data)
     validate_inputs(args, hparams)
 
@@ -252,19 +238,16 @@ def main(args):
 
         hparams['key_support_size']
 
-    if args.generate_full_matrix:
-        print('Generating Full Matrix of Size {} by {} = {}'.format(
-            hparams['key_support_size'], hparams['query_support_size'], 
-            hparams['key_support_size']*hparams['query_support_size']))
-        gt = gen_full_matrix(hparams)
-    else:
-        gt = None  
-
     pl.seed_everything(hparams['seed'])
 
     # model
-    Module = ContrastiveTrainModule if hparams['model'] == 'contrastive' else GenerativeTrainModule
-    trainmodule =  Module(hparams, gt_distributions=gt if hparams['populate_prediction_matrix'] else {})
+    if args.mode == 'repr_study':
+        assert hparams['model'] == 'contrastive'
+        Module = ContrastiveReprStudyModule # if hparams['model'] == 'contrastive' else GenerativeReprStudyModule
+    else:
+        Module = ContrastiveTrainModule if hparams['model'] == 'contrastive' else GenerativeTrainModule
+
+    trainmodule =  Module(hparams)
     model_summary = pl.core.memory.ModelSummary(trainmodule, mode='full')
     print(model_summary,'\n')
 
@@ -272,25 +255,33 @@ def main(args):
         sys.exit(1)
 
     # dataset
-    game_datamodule = GameDataModule(
-        batch_size = hparams['batch_size'],
-        raw_data = game_data,
-        embedding_by_property = hparams['embedding_by_property'],
-        model_typ = hparams['model'],
-        PAD=hparams['PAD'],
-        debug=hparams['debug']
-    )   
+    if args.mode == 'repr_study':
+        game_datamodule = ReprsentationStudyDataModule(
+            batch_size = hparams['batch_size'],
+            raw_data = game_data,
+            model_typ = hparams['model'],
+            PAD=hparams['PAD'],
+            debug=hparams['debug']
+        )   
+    else:
+        game_datamodule = GameDataModule(
+            batch_size = hparams['batch_size'],
+            raw_data = game_data,
+            model_typ = hparams['model'],
+            PAD=hparams['PAD'],
+            debug=hparams['debug']
+        )   
 
     # logger
     run_name = 'SET;attr{}-val{}-nest{};{};{};d_model{};{};params{}K'.format(
         hparams['num_attributes'], hparams['num_attr_vals'], hparams['nest_depth_int'],
         hparams['model'],
-        'embedByProperty' if hparams['embedding_by_property'] else 'lookupTable',
+        'embedByProperty',
         hparams['d_model'],
         'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    project_name = 'ContrastiveLearning-cardgame-Shattering'
+    project_name = 'ContrastiveLearning-cardgame-SETShattering'
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:
@@ -326,16 +317,16 @@ def main(args):
         resume_train(
             args, hparams, project_name, args.runID, trainmodule, game_datamodule, ckpt_dir_PATH, wd_logger
         )
-    else: # test
-        # testloader
-        # test_loader = DataLoader(
-        #     GameTestFullDataset(
-        #         raw_data=game_data, embedding_by_property=hparams['embedding_by_property'], 
-        #         model_typ=hparams['model'],debug=hparams['debug']
-        #     ), 
-        #     batch_size=hparams['batch_size'], shuffle=False
-        # )
-        run_test(args, hparams, args.ckpt_name, gt, trainmodule, game_datamodule, ckpt_dir_PATH, figsize=(10,15))
+    elif args.mode == 'test':
+        run_test(
+            args, hparams, args.ckpt_name, trainmodule, game_datamodule, ckpt_dir_PATH
+        )
+    else: # repr_study
+        data_filename = args.data_path.split('/')[-1].replace('.json', '')
+        repr_out_path = os.makedirs(os.path.join(ckpt_dir_PATH, data_filename), exist_ok=True)
+        run_repr_study(
+            args, hparams, args.ckpt_name, trainmodule, game_datamodule, ckpt_dir_PATH, repr_out_path
+        )
 
     return trainmodule, game_datamodule
 
