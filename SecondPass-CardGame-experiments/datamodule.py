@@ -16,7 +16,8 @@ class GameDataModule(pl.LightningDataModule):
         self.debug = hparams['debug']
         self.key_support_size = hparams['key_support_size']
 
-        self.train_dataset = GameDatasetTrainDataset(hparams)
+        # self.train_dataset = GameDatasetTrainDataset(hparams)
+        self.train_dataset = GameDatasetTrainDataset(hparams, raw_data)
         self.val_dataset = GameDatasetValDataset(hparams, raw_data)
         self.test_dataset = GameTestFullDataset(hparams, raw_data)
         self.setup_sampler()
@@ -36,7 +37,7 @@ class GameDataModule(pl.LightningDataModule):
             
     def pad_collate_train(self, batch):
         if self.model_typ == 'generative':
-            (b_qk_tokens) = zip(*batch)
+            (b_qk_tokens,) = zip(*batch)
             qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
             return qkqk_pad
         else:
@@ -62,7 +63,7 @@ class GameDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         train_loader = DataLoader(
             self.train, batch_size=self.batch_size, shuffle=True,
-            sampler=self.train_sampler,
+            # sampler=self.train_sampler,
             collate_fn=self.pad_collate_train, 
             num_workers=12, pin_memory=True,
         )

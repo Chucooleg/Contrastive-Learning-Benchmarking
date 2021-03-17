@@ -301,7 +301,7 @@ def derive_missing_query_part(
 ################################################################################################
 
 def nest_flat_query_parts(
-    num_attributes, num_attr_vals, flat_parts, depth, max_depth, expression_resolve_fn, cardpair_answer_lookup):
+    num_attributes, num_attr_vals, flat_parts, depth, max_depth):
     depth += 1
     
     # base case
@@ -352,15 +352,13 @@ def nest_flat_query_parts(
         L_e, L_i, _, L_has_derive, L_pos_derive = \
             nest_flat_query_parts(
                 num_attributes, num_attr_vals,
-                flat_parts[:mid_idx], depth, max_depth, expression_resolve_fn,
-                cardpair_answer_lookup
+                flat_parts[:mid_idx], depth, max_depth
         )
         
         R_e, R_i, depth, R_has_derive, R_pos_derive = \
             nest_flat_query_parts(
                 num_attributes, num_attr_vals,
-                flat_parts[mid_idx:], depth, max_depth, expression_resolve_fn,
-                cardpair_answer_lookup
+                flat_parts[mid_idx:], depth, max_depth
         )        
         
         eval_expression = ['AND', L_e, R_e]
@@ -439,8 +437,6 @@ def sample_query_based_on_gt_keys(
             flat_parts=flat_card_indices, 
             depth=0, 
             max_depth=nest_depth_int,
-            expression_resolve_fn=expression_resolve_fn, # not used
-            cardpair_answer_lookup=cardpair_answer_lookup, # not used
         )
     if debug: 
         print('\nquery_eval_expression', query_eval_expression)
@@ -554,6 +550,37 @@ def sample_shattering_bucket(num_attributes, num_attr_vals, bucket_probs):
     return int(sampled_bucket)
 
 ################################################################################################
+def sample_one_training_datapoint_simple_shatter(
+    bucket, num_attributes, num_attr_vals, query_length_multiplier, nest_depth_int, multiple_OR_sets_bool,
+    cardpair_answer_lookup, symbol_vocab_token_lookup,
+    validate=False, debug=False):
+
+    gt_ks_idx = sample_subset_in_bucket(num_attributes, num_attr_vals, bucket)
+    k_idx = int(np.random.choice(gt_ks_idx))
+
+    # # determine number of cards in query
+    # num_cards_per_query = (
+    #     (num_attr_vals ** num_attributes) * 
+    #     (query_length_multiplier if query_length_multiplier else np.random.choice(a=[1,2,3,4,5]))
+    # )
+    
+    # # sample a query for this column of keys
+    # q_tokens, _, _, _ = sample_query_based_on_gt_keys(
+    #     num_attributes=num_attributes, 
+    #     num_attr_vals=num_attr_vals, 
+    #     num_cards_per_query=num_cards_per_query, 
+    #     nest_depth_int=nest_depth_int, 
+    #     gt_keys_idx=gt_ks_idx, 
+    #     multiple_OR_sets_bool=multiple_OR_sets_bool,
+    #     expression_resolve_fn=resolve_eval_expression,
+    #     cardpair_answer_lookup=cardpair_answer_lookup,
+    #     symbol_vocab_token_lookup=symbol_vocab_token_lookup,
+    #     validate=validate,
+    #     debug=debug
+    # )   
+
+    return gt_ks_idx, k_idx
+
 
 def sample_one_training_datapoint(
     bucket, num_attributes, num_attr_vals, query_length_multiplier, nest_depth_int, multiple_OR_sets_bool,
@@ -585,6 +612,136 @@ def sample_one_training_datapoint(
     )   
 
     return q_tokens, k_idx
+
+def sample_queries_simple_shatter(
+    num_attributes, query_length_multiplier, nest_depth_int, multiple_OR_sets_bool, 
+    expression_resolve_fn,
+    N_train, N_val, N_test,
+    validate=False,
+    debug=False):
+    '''
+    query_length_multiplier: int. 0 would sample the multiplier from 1 to 5.
+    '''
+    num_attr_vals = 3
+    num_keys = num_attr_vals ** num_attributes
+    
+    N = N_train + N_val + N_test
+    tokens = []
+    gt_idxs = []
+    
+    buckets = {}
+    or_ops = {}
+    and_ops = {}
+    depths = {}
+    input_lens = {}
+    
+    bucket_probs = derive_shatter_bucket_probs(num_keys)
+    cardpair_answer_lookup = construct_cardpair_answer_lookup(num_attributes, num_attr_vals)
+    base_vocab_size =  num_keys
+    symbol_vocab_token_lookup = {
+        '(': base_vocab_size,
+        ')': base_vocab_size + 1,
+        'NULL': base_vocab_size + 2,
+        'SEP': base_vocab_size + 3,
+        'SOS': base_vocab_size + 4,
+        'EOS': base_vocab_size + 5,
+        'PAD': base_vocab_size + 6,
+        'PLH': base_vocab_size + 7,
+        '&': base_vocab_size + 8,
+        '|': base_vocab_size + 9,
+    }
+
+    max_len_q = 0
+    for i in tqdm(range(N)):
+        # each query column hit a number of keys
+        gt_ks_idx, bucket = sample_keys_column(num_attributes, num_attr_vals, bucket_probs)
+        
+        # draw one key from this column of keys
+        k_idx = int(np.random.choice(gt_ks_idx))
+        
+        # # determine number of cards in query
+        # num_cards_per_query = (
+        #     num_keys * (query_length_multiplier if query_length_multiplier else np.random.choice(a=[1,2,3,4,5]))
+        # )
+        
+        # # sample a query for this column of keys
+        # q_tokens, num_or_ops, num_and_ops, depth = sample_query_based_on_gt_keys(
+        #     num_attributes=num_attributes, 
+        #     num_attr_vals=num_attr_vals, 
+        #     num_cards_per_query=num_cards_per_query, 
+        #     nest_depth_int=nest_depth_int, 
+        #     gt_keys_idx=gt_ks_idx, 
+        #     multiple_OR_sets_bool=multiple_OR_sets_bool,
+        #     expression_resolve_fn=expression_resolve_fn,
+        #     cardpair_answer_lookup=cardpair_answer_lookup,
+        #     symbol_vocab_token_lookup=symbol_vocab_token_lookup,
+        #     validate=validate,
+        #     debug=debug
+        # )
+        q_tokens = gt_ks_idx
+        num_or_ops = 0
+        num_and_ops = 0
+        depth = 0
+        
+        # accumulate datapoints
+        tokens.append((q_tokens, k_idx))
+        gt_idxs.append(gt_ks_idx)
+        
+        # stats
+        max_len_q = max(max_len_q, len(q_tokens))
+        input_lens[len(q_tokens)] = input_lens.get(len(q_tokens), 0) + 1
+        buckets[bucket] = buckets.get(bucket, 0) + 1
+        or_ops[num_or_ops] = or_ops.get(num_or_ops, 0) + 1
+        and_ops[num_and_ops] = and_ops.get(num_and_ops, 0) + 1
+        depths[depth] = depths.get(depth, 0) + 1
+
+
+    data = {
+        'num_attributes':num_attributes,
+        'num_attr_vals':num_attr_vals,
+        'nest_depth_int': nest_depth_int,
+        'key_support_size': num_keys,
+        'multiple_OR_sets_bool': multiple_OR_sets_bool,
+
+        'query_length_multiplier': query_length_multiplier,
+        'max_len_q': max_len_q,
+        'len_k': (1*num_attributes),
+        
+        #################################        
+        'train_gt_idxs': gt_idxs[:N_train],
+        'val_gt_idxs': gt_idxs[N_train:N_train+N_val],
+        'test_gt_idxs': gt_idxs[N_train+N_val:],
+        
+        'train_tokens': tokens[:N_train],
+        'val_tokens': tokens[N_train:N_train+N_val],
+        'test_tokens': tokens[N_train+N_val:],
+        
+        #################################
+
+        'vocab_size': base_vocab_size + len(symbol_vocab_token_lookup),
+        '(': symbol_vocab_token_lookup['('],
+        ')': symbol_vocab_token_lookup[')'],
+        'NULL': symbol_vocab_token_lookup['NULL'],
+        'SEP': symbol_vocab_token_lookup['SEP'],
+        'SOS': symbol_vocab_token_lookup['SOS'],
+        'EOS': symbol_vocab_token_lookup['EOS'],
+        'PAD': symbol_vocab_token_lookup['PAD'],
+        'PLH': symbol_vocab_token_lookup['PLH'],
+        '&': symbol_vocab_token_lookup['&'],
+        '|': symbol_vocab_token_lookup['|'],
+        
+        #################################
+    }
+
+    stats = {
+            'bucket_counts': buckets,
+            'or_op_counts': or_ops,
+            'and_op_counts': and_ops,
+            'depth_counts': depths,
+            'input_lens': input_lens,
+        }
+
+    return data, stats
 
 def sample_queries(
     num_attributes, query_length_multiplier, nest_depth_int, multiple_OR_sets_bool, 

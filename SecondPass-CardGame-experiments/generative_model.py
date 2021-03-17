@@ -85,6 +85,8 @@ class DecoderPredictor(nn.Module):
         self.PLH = PLH
         self.vocab_size = vocab_size
         self.debug = debug
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
+
         if self.querykey_decoder:
             self.setup_all_keys()
 
@@ -98,11 +100,11 @@ class DecoderPredictor(nn.Module):
     def forward(self, X_querykey, from_support, debug=False):
         # expects querykey_logits, query_allkey_logits, X_query_allkeys
         if from_support:
-            query_allkey_logits, X_query_allkeys = self.forward_norm_support(X_querykey, debug=debug)
-            return None, query_allkey_logits, X_query_allkeys
+            log_pxy = self.forward_norm_support(X_querykey, debug=debug)
+            return None, log_pxy
         else:
             querykey_logits = self.forward_minibatch(X_querykey, debug=debug)
-            return querykey_logits, None, None
+            return querykey_logits, None
 
     def forward_minibatch(self, X_querykey, debug=False):
         '''
@@ -117,21 +119,68 @@ class DecoderPredictor(nn.Module):
         assert out_logits.shape == (b, inp_len, self.vocab_size)
         return out_logits
 
+    def score_one_example(self, X_query_allkeys, query_allkey_logits):
+        '''
+        X_query_allkeys: (support_size, inp_len) # include <SOS>, <SEP> and <EOS>
+        query_allkey_logits: (key_support_size, inp_len, V)
+        '''
+        X_query_allkeys = X_query_allkeys[:,1:]
+        query_allkey_logits = query_allkey_logits[:,:-1,:]
+
+        # shape (key_support_size, inp_len, V)
+        log_probs_over_vocab = self.logsoftmax(query_allkey_logits)       
+        
+        # shape (key_support_size, inp_len)
+        log_probs_sentence = torch.gather(
+            input=log_probs_over_vocab, dim=-1, index=X_query_allkeys.unsqueeze(-1)).squeeze(-1)
+
+        # zero out PADs
+        # shape (key_support_size, inp_len)
+        pad_mask = (X_query_allkeys != self.PAD).float()
+        # shape (key_support_size, inp_len)
+        log_probs_sentence_masked = log_probs_sentence * pad_mask
+
+        # shape (key_support_size,)
+        log_pxy = torch.sum(log_probs_sentence_masked, dim=-1)
+
+        # shape (key_support_size,)
+        return log_pxy            
+
+
     def forward_norm_support(self, X_querykey, debug=False):
+
+        b, inp_len = X_querykey.shape
+        log_pxy = torch.empty(b, self.key_support_size).type_as(X_querykey).float()
+
+        SEP_poses = torch.nonzero(X_querykey == self.SEP)[:,1]
+
+        for b_i in range(b):
+            SEP_pos = SEP_poses[b_i]
+            # shape(self.key_support_size, inp_len)     
+            X_query_allkeys = X_querykey[b_i].repeat(self.key_support_size, 1)
+            X_query_allkeys[:,SEP_pos+1] = self.all_keys
+            # shape(self.key_support_size, inp_len, V)
+            query_allkey_logits = self.forward_minibatch(X_query_allkeys, debug=debug)
+
+            # shape (key_support_size,)
+            log_pxy[b_i] = self.score_one_example(X_query_allkeys, query_allkey_logits)
+
+        return log_pxy
+
+    def forward_norm_support_heavy(self, X_querykey, debug=False):
         '''
         for each query, compute the logits for each pos for each key in support
         X_query: shape(b, len_q),  includes <SOS> and <EOS>
         '''
         b, inp_len = X_querykey.shape
+        # TOO heavy, cannot do for all data points in batch.
         out_logits_all_keys = torch.empty(b, self.key_support_size, inp_len, self.vocab_size).type_as(X_querykey).float()
         out_X_query_allkeys = torch.empty(b, self.key_support_size, inp_len).type_as(X_querykey)
 
         SEP_poses = torch.nonzero(X_querykey == self.SEP)[:,1]
-        EOS_poses = torch.nonzero(X_querykey == self.EOS)[:,1]
 
         for b_i in range(b):
             SEP_pos = SEP_poses[b_i]
-            EOS_pos = EOS_poses[b_i]
             # shape(self.key_support_size, inp_len)
             X_query_allkeys = X_querykey[b_i].repeat(self.key_support_size, 1)
             X_query_allkeys[:,SEP_pos+1] = self.all_keys

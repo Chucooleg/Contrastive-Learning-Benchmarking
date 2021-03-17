@@ -94,32 +94,50 @@ class GenerativeTrainModule(TrainModule):
 
     ###################################################
 
-    def score_sequences(self, X_query_allkeys, query_allkey_logits):
+    def compute_argmax_accuracy(self, X_querykey, querykey_logits):
         '''
-        X_query_allkeys: (b, support_size, inp_len) # include <SOS>, <SEP> and <EOS>
-        query_allkey_logits: (b, key_support_size, inp_len, V)
+        Debug Simple Shatter only
+        X_querykey: (b, inp_len) # include <SOS>, <SEP> and <EOS>
+        querykey_logits: (b, inp_len, V)
         '''
-        X_query_allkeys = X_query_allkeys[:,:,1:]
-        query_allkey_logits = query_allkey_logits[:,:,:-1,:]
+        b, inp_len = X_querykey.shape
+        key_poses = torch.nonzero(X_querykey == self.SEP)[:, 1] # <SEP> pso should predict key
+        accuracies = []
+        # is the argmax key in query?
+        for b_i in range(b):
+            key_pos = key_poses[b_i]
+            query_tokens = X_querykey[b_i, 1:key_pos]
+            max_logit_pos = torch.argmax(querykey_logits[b_i][key_pos])
+            acc = max_logit_pos in query_tokens
+            accuracies.append(acc)
 
-        # shape (b, key_support_size, inp_len, V)
-        log_probs_over_vocab = self.logsoftmax(query_allkey_logits)
+        # if self.current_epoch == 300:
+        #     breakpoint()
+        return sum(accuracies)/len(accuracies)
 
-        # shape (b, key_support_size, inp_len)
-        log_probs_sentence = torch.gather(
-            input=log_probs_over_vocab, dim=-1, index=X_query_allkeys.unsqueeze(-1)).squeeze(-1)
-
-        # zero out PADs
-        # shape (b, key_support_size, inp_len)
-        pad_mask = (X_query_allkeys != self.PAD).float()
-        # shape (b, key_support_size, inp_len)
-        log_probs_sentence_masked = log_probs_sentence * pad_mask
-
-        # shape (b, key_support_size)
-        log_pxy = torch.sum(log_probs_sentence_masked, dim=-1)
-
-        # shape (b, key_support_size)
-        return log_pxy
+    def compute_topK_accuracy(self, X_querykey, querykey_logits):
+        '''
+        Debug Simple Shatter only
+        X_querykey: (b, inp_len) # include <SOS>, <SEP> and <EOS>
+        querykey_logits: (b, inp_len, V)
+        '''
+        b, inp_len = X_querykey.shape
+        key_poses = torch.nonzero(X_querykey == self.SEP)[:, 1] # <SEP> pos should predict key
+        accuracies = []
+        # Are the top keys in query?
+        for b_i in range(b):
+            key_pos = key_poses[b_i]
+            query_tokens = X_querykey[b_i, 1:key_pos]
+            logits = querykey_logits[b_i][key_pos]
+            # set k to be number of gt hits
+            topk_logit_poses = torch.topk(logits, k=query_tokens.shape[0])[1]
+            acc = 0
+            for pos in topk_logit_poses:
+                if pos in query_tokens:
+                    acc += 1
+            acc /= len(topk_logit_poses)
+            accuracies.append(acc)
+        return sum(accuracies)/len(accuracies)
 
     ###################################################
     def pull_representation(self, X_querykey):
@@ -139,23 +157,15 @@ class GenerativeTrainModule(TrainModule):
         # querykey_logits: (b, inp_len, V)
         # query_allkey_logits: (b, key_support_size, inp_len, V)
         # X_query_allkeys: (b, key_support_size, inp_len)
-        querykey_logits, query_allkey_logits, X_query_allkeys = self.model(
+        querykey_logits, log_pxy = self.model(
             X_querykey=X_querykey, from_support=val_bool, debug=debug
         )
 
-        if val_bool:
-            assert query_allkey_logits.shape == (b, self.key_support_size, len_qk, self.vocab_size)
-            assert X_query_allkeys.shape == (b, self.key_support_size, len_qk)
-            assert querykey_logits is None
-        else:
-            assert querykey_logits.shape == (b, len_qk, self.vocab_size) 
-            assert query_allkey_logits is None and X_query_allkeys is None
+        if self.current_epoch == 300:
+            breakpoint()
 
         if val_bool:
             loss = None
-
-            # shape (b, key_support_size) 
-            log_pxy = self.score_sequences(X_query_allkeys, query_allkey_logits)
 
             # dict
             log_scores = log_pxy
@@ -174,6 +184,13 @@ class GenerativeTrainModule(TrainModule):
                 logits=querykey_logits[:,:-1,:], 
                 labels=X_querykey[:, 1:], 
                 debug=debug)
+
+            # DEBUG simple shatter only
+            argmax_key_accuracy = self.compute_argmax_accuracy(X_querykey, querykey_logits)
+            topk_key_accuracy = self.compute_topK_accuracy(X_querykey, querykey_logits)
+            metrics = {
+                'argmax_key_accuracy':argmax_key_accuracy, 'topk_key_accuracy':topk_key_accuracy
+                }
 
         return log_pxy, loss, None, metrics
 

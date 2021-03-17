@@ -30,12 +30,7 @@ def load_data(data_path):
         if not 'datapoints' in k and not 'tokens' in k and not 'gt_idxs' in k:
             print(k, ':', data[k])
         else:
-            if not data[k]:
-                assert 'val' in k
-                k_tr = k.replace('val', 'train')
-                print(k,'length :', len(data[k_tr]))
-            else:
-                print(k,'length :', len(data[k]))
+            print(k,'length :', len(data[k]))
     print('-----------------------')
     return data
 
@@ -50,7 +45,6 @@ def validate_data(args, data):
         required_keys = (
         'key_support_size', 
         'num_attributes', 'num_attr_vals', 
-        'train_key_datapoints', 'val_key_datapoints', 'test_key_datapoints',
         'train_gt_idxs', 'val_gt_idxs', 'test_gt_idxs',
         'train_tokens', 'val_tokens', 'test_tokens'
         ) 
@@ -111,7 +105,7 @@ def run_repr_study(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_P
     trainmodule.repr_out_path = repr_out_path
 
     trainer = pl.Trainer(
-        gpus=args.gpu,
+        gpus=[args.gpu],
         min_epochs=1, max_epochs=1, 
         precision=32, 
         log_gpu_memory='all',
@@ -128,7 +122,7 @@ def run_test(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH):
     trainmodule.load_state_dict(checkpoint['state_dict'])
 
     trainer = pl.Trainer(
-        gpus=args.gpu,
+        gpus=[args.gpu],
         min_epochs=1, max_epochs=1, 
         precision=32, 
         log_gpu_memory='all',
@@ -137,9 +131,6 @@ def run_test(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH):
     )
     trainer.test(model=trainmodule, datamodule=datamodule)
 
-# TODO
-# check_val_every_n_epoch -- int
-# val_check_interval -- use float for within a epoch
 
 def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
     
@@ -160,7 +151,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
     )
 
     trainer = pl.Trainer(
-        gpus=args.gpu,
+        gpus=[args.gpu],
         min_epochs=2, max_epochs=hparams['max_epochs'], 
         check_val_every_n_epoch=hparams['val_every_n_epoch'],
         precision=32, 
@@ -191,7 +182,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
 
     # trainer
     trainer = pl.Trainer(
-        gpus=args.gpu,
+        gpus=[args.gpu],
         # plugins=DDPPlugin(find_unused_parameters=False),
         min_epochs=2, max_epochs=hparams['max_epochs'], 
         check_val_every_n_epoch=hparams['val_every_n_epoch'],
