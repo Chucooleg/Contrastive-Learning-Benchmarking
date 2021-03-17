@@ -210,6 +210,18 @@ def convert_eval_expression_to_properties(num_attributes, num_attr_vals, eval_ex
             eval_expression_properties.append(substituted_part)
     return eval_expression_properties
 
+def convert_input_expression_to_vocab_tokens(num_attributes, num_attr_vals, query_input_expression, symbol_vocab_token_lookup):
+    final_expression = []
+    for sym in query_input_expression:
+        if isinstance(sym, int):
+            token_list = decode_key_to_vocab_token(num_attributes, num_attr_vals, sym)
+            final_expression += token_list
+        else:
+            assert isinstance(sym, str)
+            final_expression.append(symbol_vocab_token_lookup[sym])
+    
+    return final_expression
+
 def weave(values_list, sym):
     return list(itertools.chain.from_iterable(zip(values_list, [sym] * len(values_list))))[:-1]
 
@@ -513,9 +525,12 @@ def sample_query_based_on_gt_keys(
     ############################################################
     
     # convert input expression from card indices to vocab tokens
-    query_for_input_vocab_tokens = [sym if isinstance(sym, int) else symbol_vocab_token_lookup[sym] for sym in query_input_expression]
+    query_for_input_vocab_tokens = convert_input_expression_to_vocab_tokens(
+        num_attributes, num_attr_vals,
+        query_input_expression, symbol_vocab_token_lookup)
     if debug: 
         print('\nquery_for_input_vocab_tokens', query_for_input_vocab_tokens)
+    
     
     num_or_ops = num_OR_cards - num_OR_sets_in_query
     num_and_ops = num_and_slots - 1
@@ -555,36 +570,6 @@ def sample_shattering_bucket(num_attributes, num_attr_vals, bucket_probs):
 
 ################################################################################################
 
-def sample_one_training_datapoint(
-    bucket, num_attributes, num_attr_vals, query_length_multiplier, nest_depth_int, multiple_OR_sets_bool,
-    cardpair_answer_lookup, symbol_vocab_token_lookup,
-    validate=False, debug=False):
-
-    gt_ks_idx = sample_subset_in_bucket(num_attributes, num_attr_vals, bucket)
-    k_idx = int(np.random.choice(gt_ks_idx))
-
-    # determine number of cards in query
-    num_cards_per_query = (
-        (num_attr_vals ** num_attributes) * 
-        (query_length_multiplier if query_length_multiplier else np.random.choice(a=[1,2,3,4,5]))
-    )
-    
-    # sample a query for this column of keys
-    q_tokens, _, _, _ = sample_query_based_on_gt_keys(
-        num_attributes=num_attributes, 
-        num_attr_vals=num_attr_vals, 
-        num_cards_per_query=num_cards_per_query, 
-        nest_depth_int=nest_depth_int, 
-        gt_keys_idx=gt_ks_idx, 
-        multiple_OR_sets_bool=multiple_OR_sets_bool,
-        expression_resolve_fn=resolve_eval_expression,
-        cardpair_answer_lookup=cardpair_answer_lookup,
-        symbol_vocab_token_lookup=symbol_vocab_token_lookup,
-        validate=validate,
-        debug=debug
-    )   
-
-    return q_tokens, k_idx
 
 def sample_queries(
     num_attributes, query_length_multiplier, nest_depth_int, multiple_OR_sets_bool, 
@@ -599,6 +584,7 @@ def sample_queries(
     num_keys = num_attr_vals ** num_attributes
     
     N = N_train + N_val + N_test
+    key_datapoints = []
     tokens = []
     gt_idxs = []
     
@@ -610,7 +596,7 @@ def sample_queries(
     
     bucket_probs = derive_shatter_bucket_probs(num_keys)
     cardpair_answer_lookup = construct_cardpair_answer_lookup(num_attributes, num_attr_vals)
-    base_vocab_size =  num_keys
+    base_vocab_size = num_attributes * num_attr_vals
     symbol_vocab_token_lookup = {
         '(': base_vocab_size,
         ')': base_vocab_size + 1,
@@ -653,8 +639,10 @@ def sample_queries(
         )
         
         # accumulate datapoints
-        tokens.append((q_tokens, k_idx))
-        gt_idxs.append(gt_ks_idx)
+        k_tokens = decode_key_to_vocab_token(num_attributes, num_attr_vals, k_idx) # check type
+        tokens.append((q_tokens, k_tokens))
+        key_datapoints.append(k_idx)
+        gt_idxs.append(gt_ks_idx) 
         
         # stats
         max_len_q = max(max_len_q, len(q_tokens))
@@ -670,13 +658,17 @@ def sample_queries(
         'num_attr_vals':num_attr_vals,
         'nest_depth_int': nest_depth_int,
         'key_support_size': num_keys,
-        'multiple_OR_sets_bool': multiple_OR_sets_bool,
 
         'query_length_multiplier': query_length_multiplier,
         'max_len_q': max_len_q,
         'len_k': (1*num_attributes),
         
-        #################################        
+        #################################
+        
+        'train_key_datapoints': key_datapoints[:N_train],
+        'val_key_datapoints': key_datapoints[N_train:N_train+N_val],
+        'test_key_datapoints': key_datapoints[N_train+N_val:],
+        
         'train_gt_idxs': gt_idxs[:N_train],
         'val_gt_idxs': gt_idxs[N_train:N_train+N_val],
         'test_gt_idxs': gt_idxs[N_train+N_val:],

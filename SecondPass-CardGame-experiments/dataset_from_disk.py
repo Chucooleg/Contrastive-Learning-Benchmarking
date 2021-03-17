@@ -1,29 +1,31 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from dataraw_sampling import sample_one_training_datapoint, construct_cardpair_answer_lookup
+from dataraw_sampling import decode_key_to_vocab_token
 import numpy as np
 
 
 class GameDatasetFromDataPoints(Dataset):
     
-    def __init__(self, hparams):
+    def __init__(self, raw_data, model_typ, debug=False):
         '''
         raw_data: object returned by sample_dataset()
         '''
         super().__init__()
-        self.model_typ = hparams['model']
-        self.debug = hparams['debug']
-        self.num_attributes = hparams['num_attributes']
-        self.num_attr_vals = hparams['num_attr_vals']
-        self.nest_depth_int = hparams['nest_depth_int']
-        self.key_support_size = hparams['key_support_size']
-        self.query_length_multiplier = hparams['query_length_multiplier']
-        self.multiple_OR_sets_bool = hparams['multiple_OR_sets_bool']
+        self.raw_data = raw_data
+        self.model_typ = model_typ
+        self.debug = debug
+        self.num_attributes = self.raw_data['num_attributes']
+        self.num_attr_vals = self.raw_data['num_attr_vals']
+        self.nest_depth_int = self.raw_data['nest_depth_int']
+        self.key_support_size = self.raw_data['key_support_size']
+        self.NULL = self.raw_data['NULL']
+        self.SEP = self.raw_data['SEP']
+        self.SOS = self.raw_data['SOS']
+        self.EOS = self.raw_data['EOS']
+        self.PAD = self.raw_data['PAD']
+        self.PLH = self.raw_data['PLH']
 
-        self.SEP = hparams['SEP']
-        self.SOS = hparams['SOS']
-        self.EOS = hparams['EOS']
-        self.PLH = hparams['PLH']
+        self.decode_key_to_vocab_token = decode_key_to_vocab_token
 
     def make_gt_binary(self, gt_idxs):
         gt_binary = torch.zeros(self.key_support_size).long()
@@ -31,76 +33,16 @@ class GameDatasetFromDataPoints(Dataset):
         return gt_binary
 
 
-# class GameDatasetTrainDataset(GameDatasetFromDataPoints):
-    
-#     def __init__(self, hparams):
-#         super().__init__(hparams)
-#         self.split = 'train'
-        
-#     def __len__(self):
-#         return len(self.raw_data[self.split + '_tokens'])
-            
-#     def __getitem__(self, idx):
-#         # list, int
-#         y_vocab_tokens, x_vocab_tokens = self.raw_data[self.split + '_tokens'][idx]
-        
-#         if self.debug:
-#             print('query\n', y_vocab_tokens)
-#             print('key\n', x_vocab_tokens)
-
-#         if self.model_typ == 'generative':
-#             return (
-#                 torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + [x_vocab_tokens] + [self.EOS]).long(), # X querykey
-#             )
-#         else:
-#             return (
-#                 torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
-#                 torch.tensor([x_vocab_tokens]).long(), # X key
-#             )
-
-
 class GameDatasetTrainDataset(GameDatasetFromDataPoints):
-    '''Sample training data on the fly'''
     
-    def __init__(self, hparams):
-        super().__init__(hparams)
+    def __init__(self, raw_data, model_typ, debug=False):
+        super().__init__(raw_data, model_typ, debug)
         self.split = 'train'
-
-        self.cardpair_answer_lookup = construct_cardpair_answer_lookup(
-            self.num_attributes, self.num_attr_vals)
-
-        self.symbol_vocab_token_lookup = {
-            '(': hparams['('],
-            ')': hparams[')'],
-            'NULL': hparams['NULL'],
-            'SEP': hparams['SEP'],
-            'SOS': hparams['SOS'],
-            'EOS': hparams['EOS'],
-            'PAD': hparams['PAD'],
-            'PLH': hparams['PLH'],
-            '&': hparams['&'],
-            '|': hparams['|'],
-        }
         
     def __len__(self):
-        return self.key_support_size
+        return len(self.raw_data[self.split + '_tokens'])
             
     def __getitem__(self, idx):
-
-        # sampled in dataloader sampler
-        bucket_int = idx + 1
-
-        y_vocab_tokens, x_vocab_tokens = sample_one_training_datapoint(
-            bucket=bucket_int, 
-            num_attributes=self.num_attributes, 
-            num_attr_vals=self.num_attr_vals, 
-            query_length_multiplier=self.query_length_multiplier, 
-            nest_depth_int=self.nest_depth_int, 
-            multiple_OR_sets_bool=self.multiple_OR_sets_bool,
-            cardpair_answer_lookup=self.cardpair_answer_lookup,
-            symbol_vocab_token_lookup=self.symbol_vocab_token_lookup,
-            )
-
         # list, int
         y_vocab_tokens, x_vocab_tokens = self.raw_data[self.split + '_tokens'][idx]
         
@@ -121,10 +63,9 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
 
 class GameDatasetValDataset(GameDatasetFromDataPoints):
     
-    def __init__(self, hparams, raw_data):
-        super().__init__(hparams)
+    def __init__(self, raw_data, model_typ, debug=False):
+        super().__init__(raw_data, model_typ, debug)
         self.split = 'val'
-        self.raw_data = raw_data
         
     def __len__(self):
         return len(self.raw_data[self.split + '_tokens'])
@@ -155,10 +96,9 @@ class GameDatasetValDataset(GameDatasetFromDataPoints):
 
 class GameTestFullDataset(GameDatasetFromDataPoints):
     
-    def __init__(self, hparams, raw_data):
-        super().__init__(hparams)
+    def __init__(self, raw_data, model_typ, debug=False):
+        super().__init__(raw_data, model_typ, debug)
         self.split = 'test'
-        self.raw_data = raw_data
         
     def __len__(self):
         return len(self.raw_data[self.split + '_tokens'])
@@ -172,7 +112,9 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
 
         if self.debug:
             print('query\n', y_vocab_tokens)
-            print('key\n', gt_idxs)
+            gt_vocab_tokens = [self.decode_key_to_vocab_token(
+                self.num_attributes, self.num_attr_vals, g_i) for g_i in gt_idxs]
+            print('key\n', gt_idxs, "\n", gt_vocab_tokens)
 
         if self.model_typ == 'generative':
             return (
@@ -189,10 +131,9 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
 class RepresentationStudyDataset(GameDatasetFromDataPoints):
     '''For pulling representation.'''
 
-    def __init__(self, hparams, raw_data):
-        super().__init__(hparams)
+    def __init__(self, raw_data, model_typ, debug=False):
+        super().__init__(raw_data, model_typ, debug)
         self.split = 'repr_study'
-        self.raw_data = raw_data
         
     def __len__(self):
         return len(self.raw_data[self.split + '_tokens'])
@@ -214,3 +155,6 @@ class RepresentationStudyDataset(GameDatasetFromDataPoints):
                 torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # query
                 torch.tensor([x_vocab_tokens]).long(), # X key
             )   
+
+
+# TODO : Sample on the fly.

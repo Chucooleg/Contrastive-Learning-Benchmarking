@@ -1,13 +1,14 @@
 {
     "seed": 42,
     "batch_size": 512,
-    "max_epochs": 20000,
+    "max_epochs": 10,
     "val_every_n_epoch": 1,
 
-    "d_model": 18,
+    "d_model": 512,
     "embed_dropout": 0.0,
+    "contrastive_repr_size": 200,
 
-    "model": "contrastive",
+    "model": "generative",
 
     "d_ff":1024,
     "num_heads":1,

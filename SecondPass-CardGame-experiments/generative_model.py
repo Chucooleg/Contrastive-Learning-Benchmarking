@@ -6,7 +6,7 @@ import math
 from collections import OrderedDict
 
 from transformer import construct_transformer_decoder, ScaledEmbedding, LearnedPositionEncoder
-from dataraw_sampling import decode_key_to_vocab_token
+import dataraw_sampling
 
 
 def construct_full_model(hparams):
@@ -89,17 +89,10 @@ class DecoderPredictor(nn.Module):
             self.setup_all_keys()
 
     def setup_all_keys(self):
-        # by key index
-        all_keys = np.empty((self.key_support_size, self.num_attributes))
-
-        for key_idx in range(self.key_support_size):
-            key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
-            all_keys[key_idx, :] = key_properties
-
-        # (key_support_size, num_attributes)
+        # (key_support_size, )
         self.register_buffer(
             name='all_keys',
-            tensor= torch.tensor(all_keys, dtype=torch.long)
+            tensor= torch.tensor(range(self.key_support_size), dtype=torch.long)
         )
 
     def forward(self, X_querykey, from_support, debug=False):
@@ -139,10 +132,9 @@ class DecoderPredictor(nn.Module):
         for b_i in range(b):
             SEP_pos = SEP_poses[b_i]
             EOS_pos = EOS_poses[b_i]
-            # assert torch.all(X_querykey[b_i, SEP_pos+1:EOS_pos] == self.PLH)
             # shape(self.key_support_size, inp_len)
             X_query_allkeys = X_querykey[b_i].repeat(self.key_support_size, 1)
-            X_query_allkeys[:,SEP_pos+1:EOS_pos] = self.all_keys
+            X_query_allkeys[:,SEP_pos+1] = self.all_keys
             out_X_query_allkeys[b_i] = X_query_allkeys
             # shape(self.key_support_size, inp_len, V)
             out_logits = self.forward_minibatch(X_query_allkeys, debug=debug)

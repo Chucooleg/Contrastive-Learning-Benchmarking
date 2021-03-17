@@ -14,9 +14,10 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 import wandb
 wandb.login()
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.plugins import DDPPlugin
 
 from datamodule import GameDataModule, ReprsentationStudyDataModule
-from trainmodule import ContrastiveTrainModule, GenerativeTrainModule, ContrastiveReprStudyModule, GenerativeReprStudyModule
+from trainmodule import ContrastiveTrainModule, GenerativeTrainModule, ContrastiveReprStudyModule
 
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
@@ -26,7 +27,7 @@ def load_data(data_path):
         data = json.load(f)
     print('---------data----------')
     for k in data:
-        if not 'datapoints' in k and not 'tokens' in k:
+        if not 'datapoints' in k and not 'tokens' in k and not 'gt_idxs' in k:
             print(k, ':', data[k])
         else:
             if not data[k]:
@@ -37,7 +38,6 @@ def load_data(data_path):
                 print(k,'length :', len(data[k]))
     print('-----------------------')
     return data
-
 
 def validate_data(args, data):
     if args.mode == 'repr_study':
@@ -68,6 +68,8 @@ def load_hparams(args, data):
         hparams['num_attributes'] = data['num_attributes']
         hparams['num_attr_vals'] = data['num_attr_vals']
         hparams['nest_depth_int'] = data['nest_depth_int']
+        hparams['query_length_multiplier'] = data['query_length_multiplier']
+        hparams['multiple_OR_sets_bool'] = data['multiple_OR_sets_bool']
         hparams['vocab_size'] = data['vocab_size']
         hparams['('] = data['(']
         hparams[')'] = data[')']
@@ -109,7 +111,7 @@ def run_repr_study(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_P
     trainmodule.repr_out_path = repr_out_path
 
     trainer = pl.Trainer(
-        gpus=[args.gpu],
+        gpus=args.gpu,
         min_epochs=1, max_epochs=1, 
         precision=32, 
         log_gpu_memory='all',
@@ -126,7 +128,7 @@ def run_test(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH):
     trainmodule.load_state_dict(checkpoint['state_dict'])
 
     trainer = pl.Trainer(
-        gpus=[args.gpu],
+        gpus=args.gpu,
         min_epochs=1, max_epochs=1, 
         precision=32, 
         log_gpu_memory='all',
@@ -135,6 +137,9 @@ def run_test(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH):
     )
     trainer.test(model=trainmodule, datamodule=datamodule)
 
+# TODO
+# check_val_every_n_epoch -- int
+# val_check_interval -- use float for within a epoch
 
 def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
     
@@ -154,10 +159,8 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         mode='max',
     )
 
-    lr_monitor = LearningRateMonitor(logging_interval='step')
-
     trainer = pl.Trainer(
-        gpus=[args.gpu], 
+        gpus=args.gpu,
         min_epochs=2, max_epochs=hparams['max_epochs'], 
         check_val_every_n_epoch=hparams['val_every_n_epoch'],
         precision=32, 
@@ -165,7 +168,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         log_gpu_memory='all',
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
-        callbacks=[checkpoint_callback, lr_monitor],
+        callbacks=[checkpoint_callback],
     )
     
     with torch.autograd.detect_anomaly():
@@ -186,12 +189,10 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         mode='max',
     )
 
-    # monitors
-    lr_monitor = LearningRateMonitor(logging_interval='step')
-
     # trainer
     trainer = pl.Trainer(
-        gpus=[args.gpu], 
+        gpus=args.gpu,
+        # plugins=DDPPlugin(find_unused_parameters=False),
         min_epochs=2, max_epochs=hparams['max_epochs'], 
         check_val_every_n_epoch=hparams['val_every_n_epoch'],
         precision=32, 
@@ -199,8 +200,8 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         log_gpu_memory='all',
         weights_summary='full',
         gradient_clip_val=hparams['gradient_clip_val'],
-        callbacks=[checkpoint_callback, lr_monitor],
-        profiler="simple"
+        callbacks=[checkpoint_callback],
+        profiler="simple",
         # num_sanity_val_steps=0,
     )
 
@@ -213,7 +214,6 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
 
 def validate_inputs(args, hparams):
     assert os.path.exists(args.config_path), 'config_path does not exist'
-    assert os.path.exists(args.data_path), 'data_path does not exist' 
     assert os.path.exists(args.checkpoint_dir), f'checkpoint_dir {args.checkpoint_dir} does not exist'
     assert args.mode in ('train', 'resume_train', 'test_full', 'param_summary', 'repr_study')
     if args.mode in ('resume_train', 'test_full', 'repr_study'):
@@ -265,18 +265,16 @@ def main(args):
         )   
     else:
         game_datamodule = GameDataModule(
-            batch_size = hparams['batch_size'],
             raw_data = game_data,
-            model_typ = hparams['model'],
-            PAD=hparams['PAD'],
-            debug=hparams['debug']
+            hparams=hparams,
         )   
 
     # logger
-    run_name = 'SET;attr{}-val{}-nest{};{};{};d_model{};{};params{}K'.format(
-        hparams['num_attributes'], hparams['num_attr_vals'], hparams['nest_depth_int'],
+    run_name = 'SET;attr{}-val{}-{}LenMul-nest{};{};d_model{};{};params{}K'.format(
+        hparams['num_attributes'], hparams['num_attr_vals'], 
+        hparams['query_length_multiplier'],
+        hparams['nest_depth_int'],
         hparams['model'],
-        'embedByProperty',
         hparams['d_model'],
         'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
         round(max(model_summary.param_nums)/1000,2))

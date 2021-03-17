@@ -38,8 +38,6 @@ class TrainModule(pl.LightningModule):
             num_attr_vals=self.hparams['num_attr_vals'], 
             key_support_size=self.hparams['key_support_size'])
 
-        self.extra_monitors = hparams['extra_monitors']
-
    ###################################################
 
     def log_metrics(self, metrics_dict):
@@ -93,7 +91,6 @@ class GenerativeTrainModule(TrainModule):
         self.EOS = self.hparams['EOS']
         self.PAD = self.hparams['PAD']
         self.SEP = self.hparams['SEP']
-        self.classify_with_pmi = self.hparams['generative_classifier_with_pmi']
 
     ###################################################
 
@@ -130,9 +127,8 @@ class GenerativeTrainModule(TrainModule):
 
     ###################################################
 
-    def forward(self, X_keyId, X_querykey, gt_binary, val_bool, full_test_bool=False, debug=False):
+    def forward(self, X_querykey, gt_binary, val_bool, full_test_bool=False, debug=False):
         '''
-        X_keyId: (b, 1)
         X_querykey: (b, inp_len) # include <SOS>, <SEP> and <EOS>
         gt_binary: (b, key support size)
         val_bool: boolean. Compute metrics such as acc, precision, recall, f1 based on queries.
@@ -167,7 +163,7 @@ class GenerativeTrainModule(TrainModule):
                 scores=self.softmax(log_scores), # shape (b,support)
                 threshold=1.0/self.hparams['key_support_size'],
                 gt_binary=gt_binary,
-                debug=debug, 
+                debug=debug,
             )
 
         else:
@@ -185,13 +181,12 @@ class GenerativeTrainModule(TrainModule):
 
     def training_step(self, batch, batch_nb):
         
-        # (b, 1), (b, inp_len)
-        X_keyId, X_querykey = batch
+        # (b, inp_len)
+        X_querykey = batch
         gt_binary = None
 
         # scalar
         _, loss, _, metrics = self(
-            X_keyId=X_keyId, 
             X_querykey=X_querykey,
             gt_binary=gt_binary, 
             val_bool=False, 
@@ -214,11 +209,10 @@ class GenerativeTrainModule(TrainModule):
 
     def validation_step(self, batch, batch_nb):
 
-        # (b, 1), (b, inp_len), (b, support size)
-        X_keyId, X_querykey, gt_binary = batch
+        # (b, inp_len), (b, support size)
+        X_querykey, gt_binary = batch
 
         _, loss, _, _ = self(
-            X_keyId=X_keyId, 
             X_querykey=X_querykey,
             gt_binary=gt_binary,
             val_bool=False, 
@@ -226,7 +220,6 @@ class GenerativeTrainModule(TrainModule):
         )
 
         _, _, _, metrics = self(
-            X_keyId=X_keyId, 
             X_querykey=X_querykey,
             gt_binary=gt_binary, 
             val_bool=True, 
@@ -252,12 +245,10 @@ class GenerativeTrainModule(TrainModule):
 
         # (b, inp_len), (b, support size)
         X_querykey, gt_binary = batch
-        X_keyId = None
         
         # compute scores for all keys
         # shape(b, key_support_size), _, dictionary
         log_pxy, _, _, metrics = self(
-            X_keyId=X_keyId, 
             X_querykey=X_querykey,
             gt_binary=gt_binary, 
             val_bool=True, 
@@ -273,7 +264,6 @@ class GenerativeTrainModule(TrainModule):
 
     def validation_epoch_end(self, outputs):
         averaged_metrics = self.aggregate_metrics_at_epoch_end(outputs)
-        self.clear_model_logpx_lookup()
         return averaged_metrics
 
     ###################################################
@@ -316,19 +306,17 @@ class ContrastiveTrainModule(TrainModule):
     ###################################################
 
     def forward(
-        self, X_keyId, X_query, X_key, gt_binary, val_bool, full_test_bool=False, debug=False):
+        self, X_query, X_key, gt_binary, val_bool, full_test_bool=False, debug=False):
         '''
-        X_keyId: (b, 1)
         X_query: (b, lenq)
-        X_key: (b, lenk)
+        X_key: (b, 1)
         val_bool: boolean. Compute metrics such as acc, precision, recall, f1 based on queries.
         full_test_bool: boolean. 
         '''
         b, len_q = X_query.shape
         assert len_q <= self.hparams['max_len_q']
         if X_key is not None:
-            len_k = X_key.shape[1]
-            assert len_k == self.hparams['len_k']
+            assert X_key.shape == (b, 1)
 
         # shape (b,support) if from_support else (b, b)
         logits = self.model(
@@ -336,7 +324,7 @@ class ContrastiveTrainModule(TrainModule):
             from_support=((not self.use_InfoNCE) or val_bool), debug=debug)
 
         # scalar, shape(b,)
-        loss, loss_full = (None, None) if val_bool else self.loss_criterion(logits, X_keyId, debug=debug)
+        loss, loss_full = (None, None) if val_bool else self.loss_criterion(logits, X_key, debug=debug)
 
         # scalar
         metrics = self.metrics(
@@ -352,11 +340,10 @@ class ContrastiveTrainModule(TrainModule):
     def training_step(self, batch, batch_nb):
         
         # (b, 1), (b, len_q), (b, len_k)
-        X_keyId, X_query, X_key = batch
+        X_query, X_key = batch
         gt_binary = None
         # scalar
         _, loss, _, _ = self( 
-            X_keyId=X_keyId, 
             X_query=X_query, 
             X_key=X_key, 
             gt_binary=gt_binary, 
@@ -381,10 +368,9 @@ class ContrastiveTrainModule(TrainModule):
 
     def validation_step(self, batch, batch_nb):
         # (b, 1), (b, len_q), (b, len_k), (b, support size)
-        X_keyId, X_query, X_key, gt_binary = batch
+        X_query, X_key, gt_binary = batch
 
         _, loss, _, _ = self(
-            X_keyId=X_keyId, 
             X_query=X_query, 
             X_key=X_key, 
             gt_binary=gt_binary, 
@@ -392,7 +378,6 @@ class ContrastiveTrainModule(TrainModule):
             debug=self.debug)
 
         _, _, _, metrics = self(
-            X_keyId=X_keyId, 
             X_query=X_query, 
             X_key=X_key, 
             gt_binary=gt_binary, 
@@ -419,12 +404,11 @@ class ContrastiveTrainModule(TrainModule):
 
         # (b, len_q), (b, support size)
         X_query, gt_binary = batch
-        X_keyId, X_key = None, None
+        X_key = None, None
         
         # compute scores for all keys
         # shape(b, key_support_size), _, dictionary
         logits, _, _, metrics = self(
-            X_keyId=X_keyId, 
             X_query=X_query, 
             X_key=X_key, 
             gt_binary=gt_binary, 
@@ -494,9 +478,6 @@ class ContrastiveReprStudyModule(ContrastiveTrainModule):
         X_query: (b, lenq)
         X_key: (b, lenk)
         '''
-        b, len_q = X_query.shape
-        len_k = X_key.shape[1]
-
         # shape (b, d_model)
         query_repr = self.model.encode_query(X_query) if X_query else None
         # shape (b, d_model)

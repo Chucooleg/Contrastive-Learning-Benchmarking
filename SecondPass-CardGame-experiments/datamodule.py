@@ -1,23 +1,32 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 import pytorch_lightning as pl
 from dataset import GameDatasetTrainDataset, GameDatasetValDataset, GameTestFullDataset, RepresentationStudyDataset
 from torch.nn.utils.rnn import pad_sequence
 
+from dataraw_sampling import derive_shatter_bucket_probs
+
 class GameDataModule(pl.LightningDataModule):
     
-    def __init__(self, batch_size, raw_data, PAD, model_typ, debug=False):
+    def __init__(self, hparams, raw_data):
         super().__init__()
-        self.batch_size = batch_size
-        self.PAD = PAD
-        self.model_typ = model_typ
-        self.train_dataset = GameDatasetTrainDataset(
-            raw_data=raw_data, model_typ=model_typ, debug=debug)
-        self.val_dataset = GameDatasetValDataset(
-            raw_data=raw_data, model_typ=model_typ, debug=debug)
-        self.test_dataset = GameTestFullDataset(
-            raw_data=raw_data, model_typ=model_typ, debug=debug)
+        self.batch_size = hparams['batch_size']
+        self.PAD = hparams['PAD']
+        self.model_typ = hparams['model']
+        self.debug = hparams['debug']
+        self.key_support_size = hparams['key_support_size']
+
+        self.train_dataset = GameDatasetTrainDataset(hparams)
+        self.val_dataset = GameDatasetValDataset(hparams, raw_data)
+        self.test_dataset = GameTestFullDataset(hparams, raw_data)
+        self.setup_sampler()
         
+    def setup_sampler(self):
+        sampler_weights = derive_shatter_bucket_probs(self.key_support_size)
+        self.train_sampler = WeightedRandomSampler(
+            weights=sampler_weights, num_samples=self.batch_size, replacement=True
+        )
+
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
             self.train = self.train_dataset
@@ -27,25 +36,23 @@ class GameDataModule(pl.LightningDataModule):
             
     def pad_collate_train(self, batch):
         if self.model_typ == 'generative':
-            (b_k_i, b_qk_tokens) = zip(*batch)
+            (b_qk_tokens) = zip(*batch)
             qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
-            return torch.stack(b_k_i), qkqk_pad
+            return qkqk_pad
         else:
-            (b_k_i, b_q_tokens, b_k_tokens) = zip(*batch)
+            (b_q_tokens, b_k_tokens) = zip(*batch)
             qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
-            kk_pad = pad_sequence(b_k_tokens, batch_first=True, padding_value=self.PAD)
-            return torch.stack(b_k_i), qq_pad, kk_pad
+            return qq_pad, torch.stack(b_k_tokens)
 
     def pad_collate_val(self, batch):
         if self.model_typ == 'generative':
-            (b_k_i, b_qk_tokens, b_gt_binary) = zip(*batch)
+            (b_qk_tokens, b_gt_binary) = zip(*batch)
             qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
-            return torch.stack(b_k_i), qkqk_pad, torch.stack(b_gt_binary)
+            return qkqk_pad, torch.stack(b_gt_binary)
         else:
-            (b_k_i, b_q_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
+            (b_q_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
             qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
-            kk_pad = pad_sequence(b_k_tokens, batch_first=True, padding_value=self.PAD)
-            return torch.stack(b_k_i), qq_pad, kk_pad, torch.stack(b_gt_binary)
+            return qq_pad, torch.stack(b_k_tokens), torch.stack(b_gt_binary)
 
     def pad_collate_test(self, batch):
         (b_q_tokens, b_gt_binary) = zip(*batch)
@@ -55,21 +62,25 @@ class GameDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         train_loader = DataLoader(
             self.train, batch_size=self.batch_size, shuffle=True,
+            sampler=self.train_sampler,
             collate_fn=self.pad_collate_train, 
+            num_workers=12, pin_memory=True,
         )
         return train_loader
     
     def val_dataloader(self):
         val_loader = DataLoader(
             self.val, batch_size=self.batch_size, shuffle=False,
-            collate_fn=self.pad_collate_val,  
+            collate_fn=self.pad_collate_val,
+            num_workers=12, pin_memory=True, 
         )
         return val_loader
 
     def test_dataloader(self):
         test_loader = DataLoader(
             self.test, batch_size=self.batch_size, shuffle=False,
-            collate_fn=self.pad_collate_test,  
+            collate_fn=self.pad_collate_test,
+            num_workers=12, pin_memory=True, 
         )
         return test_loader
 
@@ -86,13 +97,13 @@ class GameDataModule(pl.LightningDataModule):
 
 class ReprsentationStudyDataModule(pl.LightningDataModule):
     
-    def __init__(self, batch_size, raw_data, PAD, model_typ, debug=False):
+    def __init__(self, hparams, raw_data):
         super().__init__()
-        self.batch_size = batch_size
-        self.PAD = PAD
-        self.model_typ = model_typ
+        self.batch_size = hparams['batch_size']
+        self.PAD = hparams['PAD']
+        self.model_typ = hparams['model']
         self.dataset = RepresentationStudyDataset(
-            raw_data=raw_data, model_typ=model_typ, debug=debug)
+            hparams, raw_data)
 
     def setup(self, stage=None):
         if stage == 'test' or stage is None:
@@ -112,6 +123,7 @@ class ReprsentationStudyDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         test_loader = DataLoader(
             self.test, batch_size=self.batch_size, shuffle=False,
-            collate_fn=self.pad_collate_test,  
+            collate_fn=self.pad_collate_test,
+            num_workers=12, pin_memory=True,
         )
         return test_loader
