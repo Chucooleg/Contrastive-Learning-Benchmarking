@@ -6,7 +6,6 @@ import math
 from collections import OrderedDict
 
 from transformer import construct_transformer_decoder, ScaledEmbedding, LearnedPositionEncoder
-from dataraw_sampling import decode_key_to_vocab_token
 
 
 def construct_full_model(hparams):

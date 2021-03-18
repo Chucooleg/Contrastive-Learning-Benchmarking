@@ -1,23 +1,24 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
-from dataset import GameDatasetTrainDataset, GameDatasetValDataset #, GameTestFullDataset
+from dataset import GameDatasetTrainDataset, GameDatasetValDataset, GameTestFullDataset
 from torch.nn.utils.rnn import pad_sequence
+
 
 class GameDataModule(pl.LightningDataModule):
     
-    def __init__(self, batch_size, raw_data, embedding_by_property, PAD, model_typ, debug=False):
+    def __init__(self, hparams, raw_data):
         super().__init__()
-        self.batch_size = batch_size
-        self.embedding_by_property = embedding_by_property
-        self.PAD = PAD
-        self.model_typ = model_typ
+        self.batch_size = hparams['batch_size']
+        self.embedding_by_property = hparams['embedding_by_property']
+        self.PAD = hparams['PAD']
+        self.model_typ = hparams['model']
         self.train_dataset = GameDatasetTrainDataset(
-            raw_data=raw_data, embedding_by_property=embedding_by_property, model_typ=model_typ, debug=debug)
+            hparams=hparams)
         self.val_dataset = GameDatasetValDataset(
-            raw_data=raw_data, embedding_by_property=embedding_by_property, model_typ=model_typ, debug=debug)
-        # self.test_dataset = GameTestFullDataset(
-        #     raw_data=raw_data, embedding_by_property=embedding_by_property, model_typ=model_typ, debug=debug)
+            hparams=hparams, raw_data=raw_data)
+        self.test_dataset = GameTestFullDataset(
+            hparams=hparams, raw_data=raw_data)
         
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
@@ -56,21 +57,21 @@ class GameDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         train_loader = DataLoader(
             self.train, batch_size=self.batch_size, shuffle=True,
-            collate_fn=self.pad_collate_train if self.embedding_by_property else None, 
+            collate_fn=self.pad_collate_train, 
         )
         return train_loader
     
     def val_dataloader(self):
         val_loader = DataLoader(
             self.val, batch_size=self.batch_size, shuffle=False,
-            collate_fn=self.pad_collate_val if self.embedding_by_property else None,  
+            collate_fn=self.pad_collate_val,  
         )
         return val_loader
 
     def test_dataloader(self):
         test_loader = DataLoader(
             self.test, batch_size=self.batch_size, shuffle=False,
-            collate_fn=self.pad_collate_test if self.embedding_by_property else None,  
+            collate_fn=self.pad_collate_test,  
         )
         return test_loader
 

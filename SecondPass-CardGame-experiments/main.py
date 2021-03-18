@@ -26,15 +26,10 @@ def load_data(data_path):
         data = json.load(f)
     print('---------data----------')
     for k in data:
-        if not 'datapoints' in k and not 'tokens' in k:
+        if not 'datapoints' in k and not 'tokens' in k and not 'gt_idxs' in k:
             print(k, ':', data[k])
         else:
-            if not data[k]:
-                assert 'val' in k
-                k_tr = k.replace('val', 'train')
-                print(k,'length :', len(data[k_tr]))
-            else:
-                print(k,'length :', len(data[k]))
+            print(k,'length :', len(data[k]))
     print('-----------------------')
     return data
 
@@ -50,6 +45,7 @@ def validate_data(data):
         except:
             breakpoint()
 
+
 def load_hparams(args, data):
     with open(args.config_path, 'r') as f:
         hparams = json.load(f)
@@ -59,6 +55,8 @@ def load_hparams(args, data):
         hparams['num_attributes'] = data['num_attributes']
         hparams['num_attr_vals'] = data['num_attr_vals']
         hparams['nest_depth_int'] = data['nest_depth_int']
+        hparams['query_length_multiplier'] = data['query_length_multiplier']
+        hparams['multiple_OR_sets_bool'] = data['multiple_OR_sets_bool']
         hparams['vocab_size'] = data['vocab_size']
         hparams['('] = data['(']
         hparams[')'] = data[')']
@@ -68,6 +66,8 @@ def load_hparams(args, data):
         hparams['EOS'] = data['EOS']
         hparams['PAD'] = data['PAD']
         hparams['PLH'] = data['PLH']
+        hparams['&'] = data['&']
+        hparams['|'] = data['|']
 
         hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
         hparams['len_k'] = data['len_k']
@@ -225,24 +225,22 @@ def main(args):
 
     # dataset
     game_datamodule = GameDataModule(
-        batch_size = hparams['batch_size'],
+        hparams = hparams,
         raw_data = game_data,
-        embedding_by_property = hparams['embedding_by_property'],
-        model_typ = hparams['model'],
-        PAD=hparams['PAD'],
-        debug=hparams['debug']
     )   
 
     # logger
-    run_name = 'SET;attr{}-val{}-nest{};{};{};d_model{};{};params{}K'.format(
-        hparams['num_attributes'], hparams['num_attr_vals'], hparams['nest_depth_int'],
+    run_name = 'SimpleShatter;{},seed{};queryOrder{};attr{}-val{}-nest{};{};d_model{};{};params{}K'.format(
         hparams['model'],
+        hparams['seed'],
+        hparams['simple_shatter_query_order'],
+        hparams['num_attributes'], hparams['num_attr_vals'], hparams['nest_depth_int'],
         'embedByProperty' if hparams['embedding_by_property'] else 'lookupTable',
         hparams['d_model'],
         'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    project_name = 'ContrastiveLearning-cardgame-Shattering'
+    project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests'
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:

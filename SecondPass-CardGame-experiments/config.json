@@ -1,22 +1,24 @@
 {
     "seed": 42,
+    "simple_shatter_query_order": "random",
+
     "batch_size": 256,
-    "max_epochs": 20000,
-    "val_every_n_epoch": 100,
+    "max_epochs": 10000000000,
+    "val_every_n_epoch": 1000,
 
     "d_model": 512,
     "embed_dropout": 0.0,
-    "vec_repr": 512,
+    "vec_repr": 9,
 
-    "model": "generative",
+    "model": "contrastive",
 
     "embedding_by_property": true,
     "encoder": "transformer",
     "decoder": "transformer",
     "d_ff":1024,
-    "num_heads":1,
-    "N_enc":1,
-    "N_dec":1,
+    "num_heads":2,
+    "N_enc":4,
+    "N_dec":4,
     "attn_wt_tying_scheme": "untie_QKVO",
     "attn_wt_dropout": 0.0,
     "heads_dropout": 0.0,
@@ -45,7 +47,7 @@
     "scheduled_adam_warmup_steps": 8000,
 
     "additional_lr_decay": true,
-    "additional_lr_decay_milestones": [8000,8250,8500,8750,9000,9250,9500,9750,10000,10250,10500,10750,11000],
+    "additional_lr_decay_milestones": [8000,8250,8500,8750,9000,9250,9500,9750,10000,10250,10500,10750,11000,11250,11500,11750,12000,12250],
     "additional_lr_decay_gamma": 0.9,
 
     "gradient_clip_val": 0,

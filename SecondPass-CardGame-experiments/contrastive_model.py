@@ -6,7 +6,6 @@ import math
 from collections import OrderedDict
 
 from transformer import construct_transformer_encoder, ScaledEmbedding, LearnedPositionEncoder
-from dataraw_sampling import decode_key_to_vocab_token
 
 def construct_full_model(hparams):
     '''
@@ -30,7 +29,7 @@ def construct_full_model(hparams):
     
     query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
     key_projection = nn.Sequential(
-        nn.Linear(hparams['d_model'],hparams['vec_repr']),
+        nn.Linear(hparams['d_model'],hparams['d_model']),
         nn.ReLU(),
         nn.Linear(hparams['d_model'],hparams['vec_repr'])
     )
@@ -75,6 +74,7 @@ def construct_full_model(hparams):
         ) if not hparams['dotproduct_bottleneck'] else None, 
         key_support_size = hparams['key_support_size'],
         d_model = hparams['d_model'],
+        vec_repr = hparams['vec_repr'],
         vocab_size = hparams['vocab_size'],
         SOS = hparams['SOS'],
         PAD = hparams['PAD'],
@@ -93,7 +93,7 @@ class EncoderPredictor(nn.Module):
     
     def __init__(
         self, inp_query_layer, inp_key_layer, query_encoder, key_encoder, query_projection, key_projection, classifier, 
-        key_support_size, d_model, vocab_size, SOS, PAD, NULL, num_attributes, num_attr_vals, repr_pos, 
+        key_support_size, d_model, vec_repr, vocab_size, SOS, PAD, NULL, num_attributes, num_attr_vals, repr_pos, 
         normalize_dotproduct, debug=False
         ):
         super().__init__()
@@ -107,6 +107,7 @@ class EncoderPredictor(nn.Module):
         self.classifier = classifier
         self.key_support_size = key_support_size
         self.d_model = d_model
+        self.vec_repr = vec_repr
         self.vocab_size = vocab_size
         self.SOS = SOS
         self.PAD = PAD
@@ -120,11 +121,13 @@ class EncoderPredictor(nn.Module):
 
     def setup_all_keys(self):
         # by key index
-        all_keys = np.empty((self.key_support_size, 1)) # +1: add <SOS> token
+        all_keys =np.arange(self.key_support_size).reshape(-1, 1)
 
-        for key_idx in range(self.key_support_size):
-            key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
-            all_keys[key_idx, :] = np.concatenate([key_properties])
+        # all_keys = np.empty((self.key_support_size, 1)) # +1: add <SOS> token
+
+        # for key_idx in range(self.key_support_size):
+        #     key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
+        #     all_keys[key_idx, :] = np.concatenate([key_properties])
 
         # register all keys (for testing)
         # (key_support_size, num_attributes)
@@ -151,25 +154,25 @@ class EncoderPredictor(nn.Module):
     def forward_norm_minibatch(self, X_query, X_key, debug=False):
         b = X_query.shape[0]
         
-        # shape(b, d_model)
+        # shape(b, vec_repr)
         query_repr = self.encode_query(X_query)
-        assert query_repr.shape == (b, self.d_model)
+        assert query_repr.shape == (b, self.vec_repr)
         
-        # shape(b, d_model)
+        # shape(b, vec_repr)
         key_repr = self.encode_key(X_key)
-        assert key_repr.shape == (b, self.d_model)
+        assert key_repr.shape == (b, self.vec_repr)
 
         if self.classifier:
             if debug: print('Using Classifier, NOT dot-product')
-            # shape(b, b, d_model)
-            query_repr_tiled = query_repr.unsqueeze(1).expand(b, b, self.d_model)
-            # shape(b, b, d_model)
-            key_repr_tiled = key_repr.unsqueeze(0).expand(b, b, self.d_model)
-            # shape(b, b, 2*d_model)
+            # shape(b, b, vec_repr)
+            query_repr_tiled = query_repr.unsqueeze(1).expand(b, b, self.vec_repr)
+            # shape(b, b, vec_repr)
+            key_repr_tiled = key_repr.unsqueeze(0).expand(b, b, self.vec_repr)
+            # shape(b, b, 2*vec_repr)
             query_key_concat = torch.cat([query_repr_tiled, key_repr_tiled], dim=2)
-            assert query_key_concat.shape == (b, b, 2*self.d_model)
-            # shape(b*b, 2*d_model)
-            query_key_concat = query_key_concat.reshape(b*b, 2*self.d_model)
+            assert query_key_concat.shape == (b, b, 2*self.vec_repr)
+            # shape(b*b, 2*vec_repr)
+            query_key_concat = query_key_concat.reshape(b*b, 2*self.vec_repr)
             # shape(b*b, 1)
             logits = self.classifier(query_key_concat)
             assert logits.shape == (b*b, 1)
@@ -201,23 +204,23 @@ class EncoderPredictor(nn.Module):
 
     def forward_norm_support(self, X_query, debug=False):
         b = X_query.shape[0]
-        # shape(b, d_model)
+        # shape(b, vec_repr)
         query_repr = self.encode_query(X_query)
-        assert query_repr.shape == (b, self.d_model)
+        assert query_repr.shape == (b, self.vec_repr)
 
-        # shape(size(support), d_model)
+        # shape(size(support), vec_repr)
         keys_repr = self.encode_all_keys()
-        assert keys_repr.shape == (self.key_support_size, self.d_model)
+        assert keys_repr.shape == (self.key_support_size, self.vec_repr)
         
         if self.classifier:
-            # shape(b, size(support), d_model)
-            query_repr_tiled = query_repr.unsqueeze(1).expand(b, self.key_support_size, self.d_model)
-            # shape(b, size(support), d_model)
-            key_repr_tiled = keys_repr.unsqueeze(0).expand(b, self.key_support_size, self.d_model)
-            # shape(b, size(support), 2*d_model)
+            # shape(b, size(support), vec_repr)
+            query_repr_tiled = query_repr.unsqueeze(1).expand(b, self.key_support_size, self.vec_repr)
+            # shape(b, size(support), vec_repr)
+            key_repr_tiled = keys_repr.unsqueeze(0).expand(b, self.key_support_size, self.vec_repr)
+            # shape(b, size(support), 2*vec_repr)
             query_key_concat = torch.cat([query_repr_tiled, key_repr_tiled], dim=2)
-            # shape(b*size(support), 2*d_model)
-            query_key_concat = query_key_concat.reshape(b*self.key_support_size, 2*self.d_model)
+            # shape(b*size(support), 2*vec_repr)
+            query_key_concat = query_key_concat.reshape(b*self.key_support_size, 2*self.vec_repr)
             # shape(b*size(support), 1)
             logits = self.classifier(query_key_concat)
             # shape(b, size(support))
