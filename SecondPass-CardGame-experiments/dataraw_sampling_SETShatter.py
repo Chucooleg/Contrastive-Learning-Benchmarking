@@ -644,42 +644,42 @@ def sample_queries_simple_shatter(
 
 
     ##########################################
-    # Probs : Full subset
+    # # Probs : Full subset
 
-    s = [i for i in range(num_keys)]
-    power_set = list(chain.from_iterable(combinations(s, r) for r in range(len(s)+1)))
-    all_subsets = power_set[1:]
-    probs = np.array([len(subset) for subset in all_subsets]) / np.sum(np.array([len(subset) for subset in all_subsets]))
+    # s = [i for i in range(num_keys)]
+    # power_set = list(chain.from_iterable(combinations(s, r) for r in range(len(s)+1)))
+    # all_subsets = power_set[1:]
+    # probs = np.array([len(subset) for subset in all_subsets]) / np.sum(np.array([len(subset) for subset in all_subsets]))
 
-    max_len_q = 0
+    # max_len_q = 0
     ##########################################
-    # Val : Full Ground-truth
+    # # Val : Full Ground-truth
 
 
-    for i in tqdm(range(len(all_subsets))):
+    # for i in tqdm(range(len(all_subsets))):
 
-        gt_ks_idx = list(all_subsets[i])
-        bucket = len(gt_ks_idx)
-        for k_idx in gt_ks_idx:
-            q_tokens = gt_ks_idx
+    #     gt_ks_idx = list(all_subsets[i])
+    #     bucket = len(gt_ks_idx)
+    #     for k_idx in gt_ks_idx:
+    #         q_tokens = gt_ks_idx
 
-            # accumulate datapoints
-            val_tokens.append((q_tokens, [k_idx]))
-            val_gt_idxs.append(gt_ks_idx)
+    #         # accumulate datapoints
+    #         val_tokens.append((q_tokens, [k_idx]))
+    #         val_gt_idxs.append(gt_ks_idx)
             
-            num_or_ops = 0
-            num_and_ops = 0
-            depth = 0           
+    #         num_or_ops = 0
+    #         num_and_ops = 0
+    #         depth = 0           
 
-            # stats
-            max_len_q = max(max_len_q, len(q_tokens))
-            input_lens[len(q_tokens)] = input_lens.get(len(q_tokens), 0) + 1
-            buckets[bucket] = buckets.get(bucket, 0) + 1
-            or_ops[num_or_ops] = or_ops.get(num_or_ops, 0) + 1
-            and_ops[num_and_ops] = and_ops.get(num_and_ops, 0) + 1
-            depths[depth] = depths.get(depth, 0) + 1  
+    #         # stats
+    #         max_len_q = max(max_len_q, len(q_tokens))
+    #         input_lens[len(q_tokens)] = input_lens.get(len(q_tokens), 0) + 1
+    #         buckets[bucket] = buckets.get(bucket, 0) + 1
+    #         or_ops[num_or_ops] = or_ops.get(num_or_ops, 0) + 1
+    #         and_ops[num_and_ops] = and_ops.get(num_and_ops, 0) + 1
+    #         depths[depth] = depths.get(depth, 0) + 1  
     ##########################################
-    # Train : Sample from Full Ground-truth
+    # # Train : Sample from Full Ground-truth
 
     # for i in tqdm(range(4608)):
 
@@ -727,31 +727,31 @@ def sample_queries_simple_shatter(
     ##########################################
     # Probs : Buckets 
 
-    # bucket_probs = derive_shatter_bucket_probs(num_keys)
+    bucket_probs = derive_shatter_bucket_probs(num_keys)
 
-    # # Train : Sample from Bucket, Sample from Column
-    # max_len_q = num_keys
-    # for i in tqdm(range(5120)):
-    #     # list, int
-    #     gt_ks_idx, bucket = sample_keys_column(num_attributes, num_attr_vals, bucket_probs)
-    #     k_idx = int(np.random.choice(gt_ks_idx))
+    # Train : Sample from Bucket, Sample from Column
+    max_len_q = num_keys
+    for i in tqdm(range(N_val+N_test)):
+        # list, int
+        gt_ks_idx, bucket = sample_keys_column(num_attributes, num_attr_vals, bucket_probs)
+        k_idx = int(np.random.choice(gt_ks_idx))
 
-    #     q_tokens = gt_ks_idx
-    #     num_or_ops = 0
-    #     num_and_ops = 0
-    #     depth = 0  
+        q_tokens = gt_ks_idx
+        num_or_ops = 0
+        num_and_ops = 0
+        depth = 0  
 
-    #     # accumulate datapoints
-    #     val_tokens.append((q_tokens, [k_idx]))
-    #     val_gt_idxs.append(gt_ks_idx)
+        # accumulate datapoints
+        val_tokens.append((q_tokens, [k_idx]))
+        val_gt_idxs.append(gt_ks_idx)
 
-    #     # stats
-    #     max_len_q = max(max_len_q, len(q_tokens))
-    #     input_lens[len(q_tokens)] = input_lens.get(len(q_tokens), 0) + 1
-    #     buckets[bucket] = buckets.get(bucket, 0) + 1
-    #     or_ops[num_or_ops] = or_ops.get(num_or_ops, 0) + 1
-    #     and_ops[num_and_ops] = and_ops.get(num_and_ops, 0) + 1
-    #     depths[depth] = depths.get(depth, 0) + 1   
+        # stats
+        max_len_q = max(max_len_q, len(q_tokens))
+        input_lens[len(q_tokens)] = input_lens.get(len(q_tokens), 0) + 1
+        buckets[bucket] = buckets.get(bucket, 0) + 1
+        or_ops[num_or_ops] = or_ops.get(num_or_ops, 0) + 1
+        and_ops[num_and_ops] = and_ops.get(num_and_ops, 0) + 1
+        depths[depth] = depths.get(depth, 0) + 1   
 
     ##########################################
 
@@ -769,14 +769,14 @@ def sample_queries_simple_shatter(
         
         #################################        
         'train_gt_idxs': [],
-        'val_gt_idxs': val_gt_idxs,
+        'val_gt_idxs': val_gt_idxs[:N_val],
         # 'val_gt_idxs': gt_idxs[N_train:N_train+N_val],
-        'test_gt_idxs': [],
+        'test_gt_idxs': val_gt_idxs[N_val:],
         
         'train_tokens': [],
-        'val_tokens': val_tokens,
+        'val_tokens': val_tokens[:N_val],
         # 'val_tokens': tokens[N_train:N_train+N_val],
-        'test_tokens': [],
+        'test_tokens': val_tokens[N_val:],
         
         #################################
 

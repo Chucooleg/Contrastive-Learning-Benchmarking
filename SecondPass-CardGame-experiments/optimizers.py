@@ -36,13 +36,16 @@ class LRScheduledAdam(Optimizer):
         params: Iterable[torch.nn.parameter.Parameter],
         d_model: int,
         warmup_steps: int,
+        decay_lr: bool,
+        # decay_milestones=[12000, 13000, 14000], 
+        decay_lr_starts: int,
+        decay_lr_interval: int,
+        decay_lr_stops: int,
+        decay_gamma=0.1, 
         lr: float = 0.,
         betas: Tuple[float, float] = (0.9, 0.98),
         eps: float = 1e-9,
         correct_bias: bool = True,
-        decay_lr=True,
-        decay_milestones=[12000, 13000, 14000], 
-        decay_gamma=0.1, 
     ):
         if lr < 0.0:
             raise ValueError("Invalid learning rate: {} - should be >= 0.0".format(lr))
@@ -58,7 +61,9 @@ class LRScheduledAdam(Optimizer):
         self.d_model = d_model
         self.warmup_steps = warmup_steps
         self.decay_lr = decay_lr
-        self.decay_milestones = decay_milestones[::-1]
+        self.decay_lr_starts = decay_lr_starts
+        self.decay_lr_stops = decay_lr_stops
+        self.decay_lr_interval = decay_lr_interval
         self.decay_gamma = decay_gamma
         self.lr_decay_scale = 1.0
 
@@ -66,18 +71,22 @@ class LRScheduledAdam(Optimizer):
         '''
         Udpate lr
         '''
-        if self.decay_lr:
-            if self.decay_milestones and step_num == self.decay_milestones[-1]:
-                self.decay_milestones.pop()
-                self.lr_decay_scale *= self.decay_gamma   
+        # if self.decay_lr:
+        #     if (
+        #         step_num >= self.decay_lr_starts and 
+        #         step_num <= self.decay_lr_stops and 
+        #         step_num % self.decay_lr_interval == 0
+        #         ):
+        #         self.lr_decay_scale *= self.decay_gamma   
 
-        return (
-            self.d_model**(-0.5) * min(step_num**(-0.5), step_num * self.warmup_steps**(-1.5))
-        ) * self.lr_decay_scale
+        # return (
+        #     self.d_model**(-0.5) * min(step_num**(-0.5), step_num * self.warmup_steps**(-1.5))
+        # ) * self.lr_decay_scale
         
         # return (
         #     self.d_model**(-0.5) * min(step_num**(-0.5), step_num * self.warmup_steps**(-1.5))
         # )
+        return 0.00001
 
     def step(self, closure: Callable = None):
         """
@@ -120,10 +129,6 @@ class LRScheduledAdam(Optimizer):
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
 
                 group["lr"] = self.calc_step_size(state["step"])
-
-                if state["step"] in self.decay_milestones : 
-                    print('Step', state["step"])
-                    print(f'lr = {group["lr"]}')
 
                 step_size = group["lr"]
                 if group["correct_bias"]:  # No bias correction for Bert

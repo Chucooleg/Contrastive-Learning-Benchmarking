@@ -304,7 +304,20 @@ class GenerativeTrainModule(TrainModule):
     ###################################################
 
     def configure_optimizers(self):
-        assert self.hparams['embedding_by_property'] and self.hparams['encoder'] == 'transformer'
+        # opt = LRScheduledAdam(
+        #     params=self.model.parameters(),
+        #     d_model=self.hparams['d_model'], 
+        #     warmup_steps=self.hparams['scheduled_adam_warmup_steps'],
+        #     lr=0.,
+        #     betas=(
+        #         self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
+        #     eps=self.hparams['scheduled_adam_epsilon'],
+        #     correct_bias=True,
+        #     decay_lr=self.hparams["additional_lr_decay"],
+        #     decay_milestones=self.hparams["additional_lr_decay_milestones"], 
+        #     decay_gamma=self.hparams["additional_lr_decay_gamma"], 
+        # )
+
         opt = LRScheduledAdam(
             params=self.model.parameters(),
             d_model=self.hparams['d_model'], 
@@ -315,7 +328,9 @@ class GenerativeTrainModule(TrainModule):
             eps=self.hparams['scheduled_adam_epsilon'],
             correct_bias=True,
             decay_lr=self.hparams["additional_lr_decay"],
-            decay_milestones=self.hparams["additional_lr_decay_milestones"], 
+            decay_lr_starts=self.hparams["decay_lr_starts"], 
+            decay_lr_stops=self.hparams['decay_lr_stops'],
+            decay_lr_interval=self.hparams["decay_lr_interval"], 
             decay_gamma=self.hparams["additional_lr_decay_gamma"], 
         )
         return opt
@@ -440,7 +455,23 @@ class ContrastiveTrainModule(TrainModule):
     ###################################################
     
     def configure_optimizers(self):
-        if self.hparams['embedding_by_property'] and self.hparams['encoder'] == 'transformer':
+        # opt = LRScheduledAdam(
+        #     params=self.model.parameters(),
+        #     d_model=self.hparams['d_model'], 
+        #     warmup_steps=self.hparams['scheduled_adam_warmup_steps'],
+        #     lr=0.,
+        #     betas=(
+        #         self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
+        #     eps=self.hparams['scheduled_adam_epsilon'],
+        #     correct_bias=True,
+        #     decay_lr=self.hparams["additional_lr_decay"],
+        #     decay_milestones=self.hparams["additional_lr_decay_milestones"], 
+        #     decay_gamma=self.hparams["additional_lr_decay_gamma"], 
+        # )
+
+        assert self.hparams['contrastive_optimizer'] in ('sgd', 'scheduled_adam')
+
+        if self.hparams['contrastive_optimizer'] == 'scheduled_adam':
             opt = LRScheduledAdam(
                 params=self.model.parameters(),
                 d_model=self.hparams['d_model'], 
@@ -451,38 +482,17 @@ class ContrastiveTrainModule(TrainModule):
                 eps=self.hparams['scheduled_adam_epsilon'],
                 correct_bias=True,
                 decay_lr=self.hparams["additional_lr_decay"],
-                decay_milestones=self.hparams["additional_lr_decay_milestones"], 
+                decay_lr_starts=self.hparams["decay_lr_starts"], 
+                decay_lr_stops=self.hparams['decay_lr_stops'],
+                decay_lr_interval=self.hparams["decay_lr_interval"], 
                 decay_gamma=self.hparams["additional_lr_decay_gamma"], 
             )
-
-            # if self.hparams["additional_lr_decay"]:
-            #     # try LR decay here!
-            #     # https://github.com/PyTorchLightning/pytorch-lightning/issues/3795
-            #     scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            #         opt, 
-            #         milestones=self.hparams["additional_lr_decay_milestones"], 
-            #         gamma=self.hparams["additional_lr_decay_gamma"], 
-            #         last_epoch=-1, 
-            #         verbose=True)
-            #     return [opt], [scheduler]
-            # else:
-            #     return opt
-            return opt
-
         else:
             opt = torch.optim.SGD(
-                params=self.model.parameters(),
-                lr=self.hparams['sgd_lr'],
-                momentum=self.hparams['sgd_momentum']
-            )
-            
-            # opt = torch.optim.Adam(
-            #     params=self.model.parameters(),
-            #     lr=self.hparams['adam_lr'],
-            #     betas=(
-            #         self.hparams['adam_beta1'], self.hparams['adam_beta2']),
-            #     eps=self.hparams['adam_epsilon'],
-            #     weight_decay=self.hparams['adam_weight_decay']
-            # )
-            return opt
+                    params=self.model.parameters(),
+                    lr=self.hparams['sgd_lr'],
+                    momentum=self.hparams['sgd_momentum']
+                )
+        return opt
+
 
