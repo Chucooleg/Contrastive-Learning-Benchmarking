@@ -28,7 +28,7 @@ def construct_full_model(hparams):
     # 
     position_encoder = LearnedPositionEncoder(
         d_model=hparams['d_model'], 
-        max_len=hparams['max_len_q'] + hparams['len_k'],
+        max_len=hparams['max_len_q'] + hparams['len_k'] + 1, # <SEP>
         emb_init_var=torch.var(querykey_embed_X.embedding.weight).cpu().item()
     ) if hparams['embedding_by_property'] else None
 
@@ -88,29 +88,24 @@ class DecoderPredictor(nn.Module):
         self.debug = debug
         if self.querykey_decoder:
             self.setup_all_keys()
+        self.logsoftmax = nn.LogSoftmax(dim=-1)
 
     def setup_all_keys(self):
-        # by key index
-        all_keys = np.empty((self.key_support_size, self.num_attributes))
-
-        for key_idx in range(self.key_support_size):
-            key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
-            all_keys[key_idx, :] = key_properties
 
         # (key_support_size, num_attributes)
         self.register_buffer(
             name='all_keys',
-            tensor= torch.tensor(all_keys, dtype=torch.long)
+            tensor= torch.tensor(np.arange(self.key_support_size), dtype=torch.long)
         )
 
     def forward(self, X_querykey, from_support, debug=False):
         # expects querykey_logits, query_allkey_logits, X_query_allkeys
         if from_support:
-            query_allkey_logits, X_query_allkeys = self.forward_norm_support(X_querykey, debug=debug)
-            return None, query_allkey_logits, X_query_allkeys
+            log_pxy = self.forward_norm_support(X_querykey, debug=debug)
+            return None, log_pxy
         else:
             querykey_logits = self.forward_minibatch(X_querykey, debug=debug)
-            return querykey_logits, None, None
+            return querykey_logits, None
 
     def forward_minibatch(self, X_querykey, debug=False):
         '''
@@ -126,31 +121,51 @@ class DecoderPredictor(nn.Module):
         return out_logits
 
     def forward_norm_support(self, X_querykey, debug=False):
-        '''
-        for each query, compute the logits for each pos for each key in support
-        X_query: shape(b, len_q),  includes <SOS> and <EOS>
-        '''
+
         b, inp_len = X_querykey.shape
-        out_logits_all_keys = torch.empty(b, self.key_support_size, inp_len, self.vocab_size).type_as(X_querykey).float()
-        out_X_query_allkeys = torch.empty(b, self.key_support_size, inp_len).type_as(X_querykey)
+        log_pxy = torch.empty(b, self.key_support_size).type_as(X_querykey).float()
 
         SEP_poses = torch.nonzero(X_querykey == self.SEP)[:,1]
-        EOS_poses = torch.nonzero(X_querykey == self.EOS)[:,1]
 
         for b_i in range(b):
             SEP_pos = SEP_poses[b_i]
-            EOS_pos = EOS_poses[b_i]
-            # assert torch.all(X_querykey[b_i, SEP_pos+1:EOS_pos] == self.PLH)
-            # shape(self.key_support_size, inp_len)
+            # shape(self.key_support_size, inp_len)     
             X_query_allkeys = X_querykey[b_i].repeat(self.key_support_size, 1)
-            X_query_allkeys[:,SEP_pos+1:EOS_pos] = self.all_keys
-            out_X_query_allkeys[b_i] = X_query_allkeys
+            X_query_allkeys[:,SEP_pos+1] = self.all_keys
             # shape(self.key_support_size, inp_len, V)
-            out_logits = self.forward_minibatch(X_query_allkeys, debug=debug)
-            out_logits_all_keys[b_i, :,:,:] = out_logits
+            query_allkey_logits = self.forward_minibatch(X_query_allkeys, debug=debug)
+
+            # shape (key_support_size,)
+            log_pxy[b_i] = self.score_one_example(X_query_allkeys, query_allkey_logits)
+
+        return log_pxy
+
+    def score_one_example(self, X_query_allkeys, query_allkey_logits):
+        '''
+        X_query_allkeys: (support_size, inp_len) # include <SOS>, <SEP> and <EOS>
+        query_allkey_logits: (key_support_size, inp_len, V)
+        '''
+        X_query_allkeys = X_query_allkeys[:,1:]
+        query_allkey_logits = query_allkey_logits[:,:-1,:]
+
+        # shape (key_support_size, inp_len, V)
+        log_probs_over_vocab = self.logsoftmax(query_allkey_logits)       
         
-        # shape(b, key_support_size, inp_len, V)
-        return out_logits_all_keys, out_X_query_allkeys
+        # shape (key_support_size, inp_len)
+        log_probs_sentence = torch.gather(
+            input=log_probs_over_vocab, dim=-1, index=X_query_allkeys.unsqueeze(-1)).squeeze(-1)
+
+        # zero out PADs
+        # shape (key_support_size, inp_len)
+        pad_mask = (X_query_allkeys != self.PAD).float()
+        # shape (key_support_size, inp_len)
+        log_probs_sentence_masked = log_probs_sentence * pad_mask
+
+        # shape (key_support_size,)
+        log_pxy = torch.sum(log_probs_sentence_masked, dim=-1)
+
+        # shape (key_support_size,)
+        return log_pxy    
 
     def decode_querykey(self, X_querykey):
         '''

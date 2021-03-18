@@ -15,9 +15,6 @@ import wandb
 wandb.login()
 from pytorch_lightning.loggers import WandbLogger
 
-from dataraw_sampling import gen_full_matrices
-from util_distribution import plot_distribution
-from dataset import GameTestFullDataset
 from datamodule import GameDataModule
 from trainmodule import ContrastiveTrainModule, GenerativeTrainModule
 
@@ -44,13 +41,14 @@ def load_data(data_path):
 
 def validate_data(data):
     for key in (
-        'key_support_size', 'query_support_size', 
+        'key_support_size',
         'num_attributes', 'num_attr_vals', 
-        'train_datapoints', 'val_datapoints',
-        'sparsity_estimate'
+        'train_tokens', 'val_tokens'
     ):
-        assert key in data, f'{key} not found in data'
-        
+        try:
+            assert key in data, f'{key} not found in data'
+        except:
+            breakpoint()
 
 def load_hparams(args, data):
     with open(args.config_path, 'r') as f:
@@ -58,10 +56,8 @@ def load_hparams(args, data):
 
     if args.mode in ('train', 'param_summary'):
         hparams['key_support_size'] = data['key_support_size']
-        hparams['query_support_size'] = data['query_support_size']
         hparams['num_attributes'] = data['num_attributes']
         hparams['num_attr_vals'] = data['num_attr_vals']
-        hparams['num_cards_per_query'] = data['num_cards_per_query']
         hparams['nest_depth_int'] = data['nest_depth_int']
         hparams['vocab_size'] = data['vocab_size']
         hparams['('] = data['(']
@@ -72,15 +68,9 @@ def load_hparams(args, data):
         hparams['EOS'] = data['EOS']
         hparams['PAD'] = data['PAD']
         hparams['PLH'] = data['PLH']
-        hparams['hold_out'] = data['hold_out']
 
-        hparams['populate_prediction_matrix'] = args.generate_full_matrix
-        if hparams['embedding_by_property']:
-            hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
-            hparams['len_k'] = data['len_k'] + 2 # <SOS>---
-        else:
-            hparams['max_len_q'] = 1
-            hparams['len_k'] = 1
+        hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
+        hparams['len_k'] = data['len_k']
 
         assert hparams['model'] in ("contrastive", "generative")
         if hparams['embedding_by_property']:
@@ -104,24 +94,7 @@ def load_hparams(args, data):
     print('---------------------------')
     return hparams  
 
-
-def gen_full_matrix(hparams):
-    print('Generating Full Matrix')
-    count_table, xy, xyind, xy_div_xyind, distribution = gen_full_matrices(
-        hparams['num_attributes'], hparams['num_attr_vals'], hparams['num_cards_per_query'], hparams['nest_depth_int']
-    )
-    gt = {
-        'count_table':count_table,
-        'xy':xy,
-        'xyind':xyind,
-        'xy_div_xyind':xy_div_xyind,
-        'distribution':distribution
-    }
-    print(distribution)
-    return gt
-
-
-def run_test(args, hparams, ckpt_name, gt, trainmodule, datamodule, ckpt_dir_PATH, figsize=(10,15)):
+def run_test(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH, figsize=(10,15)):
 
     checkpoint_PATH = os.path.join(ckpt_dir_PATH, ckpt_name) #'last.ckpt'
     checkpoint = torch.load(checkpoint_PATH, map_location=lambda storage, loc: storage)
@@ -137,19 +110,6 @@ def run_test(args, hparams, ckpt_name, gt, trainmodule, datamodule, ckpt_dir_PAT
     )
     res = trainer.test(model=trainmodule, datamodule=datamodule)
     
-    # TODO uncomment this!!!!!!!!
-    # if hparams['populate_prediction_matrix']:  
-    #     model_distribution_res = trainmodule.pull_model_distribution(debug=hparams['debug'])
-    #     print('xy_hat_rank:', model_distribution_res['xy_hat_rank'])
-    #     print('xy_div_xyind_hat_rank:', model_distribution_res['xy_div_xyind_hat_rank'])
-    #     print('mi_hat:', model_distribution_res['mi_hat'])
-    #     print('mi_gt:', model_distribution_res['mi_gt'])
-    #     print('kl_div:', model_distribution_res['kl_div'])
-
-    #     plot_distribution(model_distribution_res['xy_hat'], model_distribution_res['xy_div_xyind_hat'], 'Model', figsize, show_img=False, save_dir=ckpt_dir_PATH)
-    #     plot_distribution(gt['xy'], gt['xy_div_xyind'],'Ground-Truth', figsize, show_img=False, save_dir=ckpt_dir_PATH)
-
-
 def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
     
     checkpoint_PATH = os.path.join(ckpt_dir_PATH, 'last.ckpt')
@@ -252,19 +212,11 @@ def main(args):
 
         hparams['key_support_size']
 
-    if args.generate_full_matrix:
-        print('Generating Full Matrix of Size {} by {} = {}'.format(
-            hparams['key_support_size'], hparams['query_support_size'], 
-            hparams['key_support_size']*hparams['query_support_size']))
-        gt = gen_full_matrix(hparams)
-    else:
-        gt = None  
-
     pl.seed_everything(hparams['seed'])
 
     # model
     Module = ContrastiveTrainModule if hparams['model'] == 'contrastive' else GenerativeTrainModule
-    trainmodule =  Module(hparams, gt_distributions=gt if hparams['populate_prediction_matrix'] else {})
+    trainmodule =  Module(hparams, gt_distributions={})
     model_summary = pl.core.memory.ModelSummary(trainmodule, mode='full')
     print(model_summary,'\n')
 
@@ -327,15 +279,7 @@ def main(args):
             args, hparams, project_name, args.runID, trainmodule, game_datamodule, ckpt_dir_PATH, wd_logger
         )
     else: # test
-        # testloader
-        # test_loader = DataLoader(
-        #     GameTestFullDataset(
-        #         raw_data=game_data, embedding_by_property=hparams['embedding_by_property'], 
-        #         model_typ=hparams['model'],debug=hparams['debug']
-        #     ), 
-        #     batch_size=hparams['batch_size'], shuffle=False
-        # )
-        run_test(args, hparams, args.ckpt_name, gt, trainmodule, game_datamodule, ckpt_dir_PATH, figsize=(10,15))
+        run_test(args, hparams, args.ckpt_name, trainmodule, game_datamodule, ckpt_dir_PATH, figsize=(10,15))
 
     return trainmodule, game_datamodule
 
@@ -347,7 +291,6 @@ if __name__ == '__main__':
     # settings
     parser.add_argument('--config_path', help='path to config.json')
     parser.add_argument('--data_path', help='path to data json file')
-    parser.add_argument('--generate_full_matrix', help='1/0. if full matrix is small enough.', type=int)
     parser.add_argument('--checkpoint_dir', help='path to save and load checkpoints.')
     parser.add_argument('--mode', help='train, resume_train, test_full')
     parser.add_argument('--resume_max_epochs', default=None, help='must provide if resume training or testing')

@@ -1,13 +1,14 @@
 {
     "seed": 42,
-    "batch_size": 512,
+    "batch_size": 256,
     "max_epochs": 20000,
-    "val_every_n_epoch": 1,
+    "val_every_n_epoch": 100,
 
-    "d_model": 11,
+    "d_model": 512,
     "embed_dropout": 0.0,
+    "vec_repr": 512,
 
-    "model": "contrastive",
+    "model": "generative",
 
     "embedding_by_property": true,
     "encoder": "transformer",
@@ -28,7 +29,6 @@
     "loss_temperature_const": 1.0,
     "loss_smoothing_const": 0.1,
     "nonlinear_classifier_scale_down_factor": [2,1],
-    "generative_classifier_with_pmi": false,
 
     "adam_lr": 0.001,
     "adam_beta1": 0.9,
@@ -42,10 +42,10 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-09,
-    "scheduled_adam_warmup_steps": 90000,
+    "scheduled_adam_warmup_steps": 8000,
 
     "additional_lr_decay": true,
-    "additional_lr_decay_milestones": [90000,90250,90500,90750,91000,91250,91500,91750,92000,92250,92500,92750,93000],
+    "additional_lr_decay_milestones": [8000,8250,8500,8750,9000,9250,9500,9750,10000,10250,10500,10750,11000],
     "additional_lr_decay_gamma": 0.9,
 
     "gradient_clip_val": 0,

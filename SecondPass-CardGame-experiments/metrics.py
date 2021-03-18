@@ -155,20 +155,17 @@ class ThresholdedMetrics(nn.Module):
         self.num_attr_vals = num_attr_vals
         self.key_support_size = key_support_size
      
-    def forward(self, X_queryId, scores, threshold, gt_binary, debug=False):
+    def forward(self, scores, threshold, gt_binary, debug=False):
         '''
-        X_queryId: shape (b, 1) 
-        X_keyId: shape (b,1) 
         scores: shape (b, support size)
         X_keys: shape (b, support size). value 1.0 at where card matches. value 0 otherwise.
         loss_full: shape (b, ) 
         '''
-        b = X_queryId.shape[0]
+        b = scores.shape[0]
         assert gt_binary.shape == (b, self.key_support_size)
         assert scores.shape == (b, self.key_support_size)
 
         return self.compute_metrics(
-            X_queryId=X_queryId, 
             scores=scores, 
             threshold=threshold, 
             gt_binary=gt_binary, 
@@ -181,9 +178,8 @@ class ThresholdedMetrics(nn.Module):
             gt[b_i, X_keysId[b_i]] = 1
         return gt
 
-    def compute_metrics(self, X_queryId, scores, threshold, gt_binary, debug=False):
+    def compute_metrics(self, scores, threshold, gt_binary, debug=False):
         '''
-        X_queryId: shape (b,1) 
         gt_binary: shape (b, support size). 1s for Ground-truth key Ids (multiple) for each query in batch.
         threshold: scalar.
         scores: shape (b, support size). logits, probs or log probs.

@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
-from dataset import GameDatasetTrainDataset, GameDatasetValDataset, GameTestFullDataset
+from dataset import GameDatasetTrainDataset, GameDatasetValDataset #, GameTestFullDataset
 from torch.nn.utils.rnn import pad_sequence
 
 class GameDataModule(pl.LightningDataModule):
@@ -16,8 +16,8 @@ class GameDataModule(pl.LightningDataModule):
             raw_data=raw_data, embedding_by_property=embedding_by_property, model_typ=model_typ, debug=debug)
         self.val_dataset = GameDatasetValDataset(
             raw_data=raw_data, embedding_by_property=embedding_by_property, model_typ=model_typ, debug=debug)
-        self.test_dataset = GameTestFullDataset(
-            raw_data=raw_data, embedding_by_property=embedding_by_property, model_typ=model_typ, debug=debug)
+        # self.test_dataset = GameTestFullDataset(
+        #     raw_data=raw_data, embedding_by_property=embedding_by_property, model_typ=model_typ, debug=debug)
         
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
@@ -28,30 +28,30 @@ class GameDataModule(pl.LightningDataModule):
             
     def pad_collate_train(self, batch):
         if self.model_typ == 'generative':
-            (b_q_j, b_k_i, b_qk_tokens) = zip(*batch)
+            (b_qk_tokens,) = zip(*batch)
             qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
-            return torch.stack(b_q_j), torch.stack(b_k_i), qkqk_pad
+            return qkqk_pad
         else:
-            (b_q_j, b_k_i, b_q_tokens, b_k_tokens) = zip(*batch)
+            (b_q_tokens, b_k_tokens) = zip(*batch)
             qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
             kk_pad = pad_sequence(b_k_tokens, batch_first=True, padding_value=self.PAD)
-            return torch.stack(b_q_j), torch.stack(b_k_i), qq_pad, kk_pad
+            return qq_pad, kk_pad
 
     def pad_collate_val(self, batch):
         if self.model_typ == 'generative':
-            (b_q_j, b_k_i, b_qk_tokens, b_gt_binary) = zip(*batch)
+            (b_qk_tokens, b_gt_binary) = zip(*batch)
             qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
-            return torch.stack(b_q_j), torch.stack(b_k_i), qkqk_pad, torch.stack(b_gt_binary)
+            return qkqk_pad, torch.stack(b_gt_binary)
         else:
-            (b_q_j, b_k_i, b_q_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
+            (b_q_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
             qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
             kk_pad = pad_sequence(b_k_tokens, batch_first=True, padding_value=self.PAD)
-            return torch.stack(b_q_j), torch.stack(b_k_i), qq_pad, kk_pad, torch.stack(b_gt_binary)
+            return qq_pad, kk_pad, torch.stack(b_gt_binary)
 
     def pad_collate_test(self, batch):
-        (b_q_j, b_q_tokens, b_gt_binary) = zip(*batch)
+        (b_q_tokens, b_gt_binary) = zip(*batch)
         qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
-        return torch.stack(b_q_j), qq_pad, torch.stack(b_gt_binary)
+        return qq_pad, torch.stack(b_gt_binary)
 
     def train_dataloader(self):
         train_loader = DataLoader(

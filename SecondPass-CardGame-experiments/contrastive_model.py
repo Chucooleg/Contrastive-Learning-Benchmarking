@@ -13,33 +13,27 @@ def construct_full_model(hparams):
     return: nn.Module.
     '''
     # embeddings
-    if hparams['embedding_by_property'] and hparams['encoder'] == 'transformer':
-        query_embed_X = ScaledEmbedding(
-            V=hparams['vocab_size'],
-            d_model=hparams['d_model'], 
-            init_option='transformer'
-        )
-        key_embed_X = query_embed_X # point to the same embedding matrix
-    else:
-        query_embed_X = ScaledEmbedding(
-            V=hparams['query_support_size'], 
-            d_model=hparams['d_model'], 
-            init_option='w2v'
-        )
-        key_embed_X = ScaledEmbedding(
-            V=hparams['key_support_size'], 
-            d_model=hparams['d_model'], 
-            init_option='w2v'
-        )
-    
+    query_embed_X = ScaledEmbedding(
+        V=hparams['vocab_size'],
+        d_model=hparams['d_model'], 
+        init_option='transformer'
+    )
+    key_embed_X = query_embed_X # point to the same embedding matrix
+
     embed_dropout = nn.Dropout(hparams['embed_dropout'])
 
     # encoders
-    if hparams['embedding_by_property'] and hparams['encoder'] == 'transformer':
-        query_encoder = construct_transformer_encoder(hparams)
-        key_encoder = construct_transformer_encoder(hparams)
-    else:
-        query_encoder, key_encoder = None, None
+    query_encoder = construct_transformer_encoder(hparams)
+    key_encoder = construct_transformer_encoder(hparams)
+    
+    construct_transformer_encoder(hparams)
+    
+    query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
+    key_projection = nn.Sequential(
+        nn.Linear(hparams['d_model'],hparams['vec_repr']),
+        nn.ReLU(),
+        nn.Linear(hparams['d_model'],hparams['vec_repr'])
+    )
 
     position_encoder = LearnedPositionEncoder(
         d_model=hparams['d_model'], 
@@ -68,6 +62,8 @@ def construct_full_model(hparams):
         ),
         query_encoder = query_encoder,
         key_encoder = key_encoder,
+        query_projection = query_projection,
+        key_projection = key_projection,
         classifier = nn.Sequential(
             OrderedDict(
                 make_classifier(
@@ -96,7 +92,7 @@ def construct_full_model(hparams):
 class EncoderPredictor(nn.Module):
     
     def __init__(
-        self, inp_query_layer, inp_key_layer, query_encoder, key_encoder, classifier, 
+        self, inp_query_layer, inp_key_layer, query_encoder, key_encoder, query_projection, key_projection, classifier, 
         key_support_size, d_model, vocab_size, SOS, PAD, NULL, num_attributes, num_attr_vals, repr_pos, 
         normalize_dotproduct, debug=False
         ):
@@ -105,6 +101,8 @@ class EncoderPredictor(nn.Module):
         self.inp_key_layer = inp_key_layer
         self.query_encoder = query_encoder
         self.key_encoder = key_encoder
+        self.query_projection = query_projection
+        self.key_projection = key_projection
         self.normalize_dotproduct = normalize_dotproduct
         self.classifier = classifier
         self.key_support_size = key_support_size
@@ -122,11 +120,11 @@ class EncoderPredictor(nn.Module):
 
     def setup_all_keys(self):
         # by key index
-        all_keys = np.empty((self.key_support_size, 1 + self.num_attributes)) # +1: add <SOS> token
+        all_keys = np.empty((self.key_support_size, 1)) # +1: add <SOS> token
 
         for key_idx in range(self.key_support_size):
             key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
-            all_keys[key_idx, :] = np.concatenate([[self.SOS], key_properties])
+            all_keys[key_idx, :] = np.concatenate([key_properties])
 
         # register all keys (for testing)
         # (key_support_size, num_attributes)
@@ -266,51 +264,68 @@ class EncoderPredictor(nn.Module):
         inp_pads = (X == self.PAD).int()
         # shape(b, l, d_model) 
         repr = self.query_encoder(inp_embed, inp_pads)
-        # shape(b, d_model) 
-        return repr[:, self.repr_pos, :]
-        
+        # shape(b, vec_repr) 
+        return self.query_projection(repr[:, self.repr_pos, :])
+
     def encode_key(self, X):
         '''
         X: (batch_size=b, l)
         '''
         b, l = X.shape 
         # shape(b, l, embed_dim)
-        try:
-            inp_embed = self.inp_key_layer(X)
-        except:
-            import pdb; pdb.set_trace()
-        assert inp_embed.shape == (b, l, self.d_model)
-        if not self.key_encoder:
-            assert inp_embed.shape == (b, 1, self.d_model)
-            # shape(b, embed_dim)
-            return inp_embed.squeeze(1)
-        # shape(batch_size=b, inp_len)
-        inp_pads = (X == self.PAD).int()
-        # shape(b, l, d_model) 
-        repr = self.key_encoder(inp_embed, inp_pads)
-        # shape(b, d_model)
-        return repr[:, self.repr_pos, :]
+        inp_embed = self.inp_key_layer(X)
+        assert inp_embed.shape == (b, 1, self.d_model)
+        # shape(b, vec_repr)
+        return self.key_projection(inp_embed.squeeze(1))
 
     def encode_all_keys(self):
+        X = self.all_keys
+        # shape(size(support), l=1, embed_dim)
+        inp_embed = self.inp_key_layer(X)
+        assert inp_embed.shape == (self.key_support_size, 1, self.d_model)
+        
+        # shape(size(support), vec_repr)
+        return self.key_projection(inp_embed.squeeze(1))
 
-        if not self.key_encoder:
-            # shape(size(support), embed_dim)
-            all_embed = self.inp_key_layer.scaled_embed.embedding.weight
-            assert all_embed.requires_grad == True
-            assert all_embed.shape == (self.key_support_size, self.d_model)
-            repr = all_embed
-            return repr
-        else:
-            X = self.all_keys
-            # shape(size(support), l=num attributes+1, embed_dim)
-            inp_embed = self.inp_key_layer(X)
-            assert inp_embed.shape == (self.key_support_size, self.num_attributes+1, self.d_model)
-            inp_pads = torch.zeros(X.shape).type_as(X).int()
-            # shape(size(support), l, d_model)
-            repr = self.key_encoder(inp_embed, inp_pads)
-            assert repr.shape == (self.key_support_size, self.num_attributes+1, self.d_model)
-            # shape(size(support), d_model) 
-            return repr[:, self.repr_pos, :]
+    # def encode_key(self, X):
+    #     '''
+    #     X: (batch_size=b, l)
+    #     '''
+    #     b, l = X.shape 
+    #     # shape(b, l, embed_dim)
+    #     inp_embed = self.inp_key_layer(X)
+    #     assert inp_embed.shape == (b, l, self.d_model)
+    #     if not self.key_encoder:
+    #         assert inp_embed.shape == (b, 1, self.d_model)
+    #         # shape(b, embed_dim)
+    #         return inp_embed.squeeze(1)
+    #     # shape(batch_size=b, inp_len)
+    #     inp_pads = (X == self.PAD).int()
+    #     # shape(b, l, d_model) 
+    #     repr = self.key_encoder(inp_embed, inp_pads)
+    #     # shape(b, vec_repr)
+    #     return self.key_projection(repr[:, self.repr_pos, :])
+
+    # def encode_all_keys(self):
+
+    #     if not self.key_encoder:
+    #         # shape(size(support), embed_dim)
+    #         all_embed = self.inp_key_layer.scaled_embed.embedding.weight
+    #         assert all_embed.requires_grad == True
+    #         assert all_embed.shape == (self.key_support_size, self.d_model)
+    #         # shape(size(support), vec_repr)
+    #         return self.key_projection(all_embed)
+    #     else:
+    #         X = self.all_keys
+    #         # shape(size(support), l=num attributes+1, embed_dim)
+    #         inp_embed = self.inp_key_layer(X)
+    #         assert inp_embed.shape == (self.key_support_size, self.num_attributes+1, self.d_model)
+    #         inp_pads = torch.zeros(X.shape).type_as(X).int()
+    #         # shape(size(support), l, d_model)
+    #         repr = self.key_encoder(inp_embed, inp_pads)
+    #         assert repr.shape == (self.key_support_size, self.num_attributes+1, self.d_model)
+    #         # shape(size(support), vec_repr)
+    #         return self.key_projection(repr[:, self.repr_pos, :])
 
 
 def make_classifier(scale_down_factor, d_model, non_linearity_class):
