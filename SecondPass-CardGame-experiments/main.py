@@ -237,7 +237,8 @@ def main(args):
         hparams['scheduled_adam_warmup_steps'],
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests-27'
+    project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests-81'
+    # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-9cards'
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:

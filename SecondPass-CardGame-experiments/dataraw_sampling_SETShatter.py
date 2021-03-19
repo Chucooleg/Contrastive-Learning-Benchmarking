@@ -873,7 +873,7 @@ def sample_queries(
         )
         
         # accumulate datapoints
-        tokens.append((q_tokens, k_idx))
+        tokens.append((q_tokens, [k_idx]))
         gt_idxs.append(gt_ks_idx)
         
         # stats

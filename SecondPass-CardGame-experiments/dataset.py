@@ -238,7 +238,6 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
 
 
 class GameDatasetValDataset(GameDatasetFromDataPoints):
-    '''Simple Shatter.'''
     
     def __init__(self, hparams, raw_data):
         super().__init__(hparams)
@@ -274,6 +273,7 @@ class GameDatasetValDataset(GameDatasetFromDataPoints):
                 torch.tensor(x_vocab_tokens).long(), # X key
                 gt_binary_tensor, # all gt key ids
             )
+
 
 
 class GameTestFullDataset(GameDatasetFromDataPoints):
