@@ -8,7 +8,7 @@
 
     "d_model": 512,
     "embed_dropout": 0.0,
-    "vec_repr": 9,
+    "vec_repr": 27,
 
     "model": "generative",
 
@@ -16,9 +16,9 @@
     "encoder": "transformer",
     "decoder": "transformer",
     "d_ff":1024,
-    "num_heads":2,
-    "N_enc":1,
-    "N_dec":1,
+    "num_heads":8,
+    "N_enc":8,
+    "N_dec":8,
     "attn_wt_tying_scheme": "untie_QKVO",
     "attn_wt_dropout": 0.0,
     "heads_dropout": 0.0,
@@ -46,13 +46,13 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-09,
-    "scheduled_adam_warmup_steps": 8000,
+    "scheduled_adam_warmup_steps": 4000,
 
     "additional_lr_decay": true,
     "additional_lr_decay_gamma": 0.9,
     "decay_lr_starts": 8000,
     "decay_lr_stops": 36000,
-    "decay_lr_interval": 500,
+    "decay_lr_interval": 1000,
 
     "gradient_clip_val": 0,
 
