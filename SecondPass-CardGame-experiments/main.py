@@ -230,17 +230,14 @@ def main(args):
     )   
 
     # logger
-    run_name = 'SimpleShatter;{},seed{};queryOrder{};attr{}-val{}-nest{};{};d_model{};{};params{}K'.format(
+    run_name = '{};{}layer;{}head;warmup{};params{}K'.format(
         hparams['model'],
-        hparams['seed'],
-        hparams['simple_shatter_query_order'],
-        hparams['num_attributes'], hparams['num_attr_vals'], hparams['nest_depth_int'],
-        'embedByProperty' if hparams['embedding_by_property'] else 'lookupTable',
-        hparams['d_model'],
-        'dot-product' if hparams['dotproduct_bottleneck'] else 'non-linear',
+        hparams['N_enc'],
+        hparams['num_heads'],
+        hparams['scheduled_adam_warmup_steps'],
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests-243'
+    project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests-9'
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:

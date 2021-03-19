@@ -469,9 +469,10 @@ class ContrastiveTrainModule(TrainModule):
         #     decay_gamma=self.hparams["additional_lr_decay_gamma"], 
         # )
 
-        assert self.hparams['contrastive_optimizer'] in ('sgd', 'scheduled_adam')
+        assert self.hparams['contrastive_optimizer'] in ('sgd', 'scheduled_adam', 'adam')
 
         if self.hparams['contrastive_optimizer'] == 'scheduled_adam':
+
             opt = LRScheduledAdam(
                 params=self.model.parameters(),
                 d_model=self.hparams['d_model'], 
@@ -487,12 +488,24 @@ class ContrastiveTrainModule(TrainModule):
                 decay_lr_interval=self.hparams["decay_lr_interval"], 
                 decay_gamma=self.hparams["additional_lr_decay_gamma"], 
             )
-        else:
+        elif self.hparams['contrastive_optimizer'] == 'sgd':
+            
             opt = torch.optim.SGD(
                     params=self.model.parameters(),
                     lr=self.hparams['sgd_lr'],
                     momentum=self.hparams['sgd_momentum']
                 )
+        else:
+
+            opt = torch.optim.Adam(
+                params=self.model.parameters(),
+                lr=self.hparams['adam_lr'],
+                betas=(
+                    self.hparams['adam_beta1'], self.hparams['adam_beta2']),
+                eps=self.hparams['adam_epsilon'],
+                weight_decay=self.hparams['adam_weight_decay']
+            )
+
         return opt
 
 

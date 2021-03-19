@@ -67,26 +67,32 @@ class LRScheduledAdam(Optimizer):
         self.decay_gamma = decay_gamma
         self.lr_decay_scale = 1.0
 
-    def calc_step_size(self, step_num):
+    def calc_step_size(self, step_num, group_i, p_i):
         '''
         Udpate lr
         '''
-        # if self.decay_lr:
-        #     if (
-        #         step_num >= self.decay_lr_starts and 
-        #         step_num <= self.decay_lr_stops and 
-        #         step_num % self.decay_lr_interval == 0
-        #         ):
-        #         self.lr_decay_scale *= self.decay_gamma   
+        if self.decay_lr:
+            if (
+                (group_i==0 and p_i==0) and
+                step_num >= self.decay_lr_starts and 
+                step_num <= self.decay_lr_stops and 
+                step_num % self.decay_lr_interval == 0
+                ):
+                self.lr_decay_scale *= self.decay_gamma   
 
-        # return (
-        #     self.d_model**(-0.5) * min(step_num**(-0.5), step_num * self.warmup_steps**(-1.5))
-        # ) * self.lr_decay_scale
+        return (
+            self.d_model**(-0.5) * min(step_num**(-0.5), step_num * self.warmup_steps**(-1.5))
+        ) * self.lr_decay_scale
         
         # return (
         #     self.d_model**(-0.5) * min(step_num**(-0.5), step_num * self.warmup_steps**(-1.5))
         # )
-        return 0.00001
+
+        # return 0.00001
+
+        # return (
+        #     1e-6
+        # ) * self.lr_decay_scale
 
     def step(self, closure: Callable = None):
         """
@@ -99,8 +105,8 @@ class LRScheduledAdam(Optimizer):
         if closure is not None:
             loss = closure()
 
-        for group in self.param_groups:
-            for p in group["params"]:
+        for group_i, group in enumerate(self.param_groups):
+            for p_i, p in enumerate(group["params"]):
                 if p.grad is None:
                     continue
                 grad = p.grad.data
@@ -128,7 +134,7 @@ class LRScheduledAdam(Optimizer):
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1.0 - beta2)
                 denom = exp_avg_sq.sqrt().add_(group["eps"])
 
-                group["lr"] = self.calc_step_size(state["step"])
+                group["lr"] = self.calc_step_size(state["step"], group_i, p_i)
 
                 step_size = group["lr"]
                 if group["correct_bias"]:  # No bias correction for Bert

@@ -5,7 +5,7 @@ import numpy as np
 import math
 from collections import OrderedDict
 
-from transformer import construct_transformer_encoder, ScaledEmbedding, LearnedPositionEncoder
+from transformer import construct_transformer_encoder, ScaledEmbedding, LearnedPositionEncoder, Positiontwise_FF, LayerNorm
 
 def construct_full_model(hparams):
     '''
@@ -28,11 +28,28 @@ def construct_full_model(hparams):
     construct_transformer_encoder(hparams)
     
     query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
+    # # original
+    # key_projection = nn.Sequential(
+    #     nn.Linear(hparams['d_model'],hparams['d_model']),
+    #     nn.ReLU(),
+    #     nn.Linear(hparams['d_model'],hparams['vec_repr'])
+    # )
+
+    # with one layer norm
     key_projection = nn.Sequential(
         nn.Linear(hparams['d_model'],hparams['d_model']),
         nn.ReLU(),
-        nn.Linear(hparams['d_model'],hparams['vec_repr'])
+        nn.Linear(hparams['d_model'],hparams['vec_repr']),
+        LayerNorm(hparams['vec_repr'])
     )
+
+    # # with layer norm and pffd
+    # key_projection = nn.Sequential(
+    #     Positiontwise_FF(hparams['d_model'], hparams['d_ff']),
+    #     LayerNorm(hparams['d_model']),
+    #     nn.Linear(hparams['d_model'],hparams['vec_repr']),
+    #     LayerNorm(hparams['vec_repr']),
+    # )
 
     position_encoder = LearnedPositionEncoder(
         d_model=hparams['d_model'], 
