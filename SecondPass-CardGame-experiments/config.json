@@ -53,6 +53,7 @@
     "decay_lr_starts": 8000,
     "decay_lr_stops": 36000,
     "decay_lr_interval": 100,
+    "contrastive_overall_lr_scale": 0.1,
 
     "gradient_clip_val": 0,
 

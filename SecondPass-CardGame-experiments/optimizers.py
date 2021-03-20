@@ -43,9 +43,11 @@ class LRScheduledAdam(Optimizer):
         decay_lr_stops: int,
         decay_gamma=0.1, 
         lr: float = 0.,
+        overall_lr_scale: float = 1.0,
         betas: Tuple[float, float] = (0.9, 0.98),
         eps: float = 1e-9,
         correct_bias: bool = True,
+        
     ):
         if lr < 0.0:
             raise ValueError("Invalid learning rate: {} - should be >= 0.0".format(lr))
@@ -66,6 +68,7 @@ class LRScheduledAdam(Optimizer):
         self.decay_lr_interval = decay_lr_interval
         self.decay_gamma = decay_gamma
         self.lr_decay_scale = 1.0
+        self.overall_lr_scale = overall_lr_scale
 
     def calc_step_size(self, step_num, group_i, p_i):
         '''
@@ -82,17 +85,12 @@ class LRScheduledAdam(Optimizer):
 
         return (
             self.d_model**(-0.5) * min(step_num**(-0.5), step_num * self.warmup_steps**(-1.5))
-        ) * self.lr_decay_scale
+        ) * self.lr_decay_scale  * self.overall_lr_scale
         
+        # # original transformer
         # return (
         #     self.d_model**(-0.5) * min(step_num**(-0.5), step_num * self.warmup_steps**(-1.5))
         # )
-
-        # return 0.00001
-
-        # return (
-        #     1e-6
-        # ) * self.lr_decay_scale
 
     def step(self, closure: Callable = None):
         """

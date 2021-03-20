@@ -487,6 +487,7 @@ class ContrastiveTrainModule(TrainModule):
                 decay_lr_stops=self.hparams['decay_lr_stops'],
                 decay_lr_interval=self.hparams["decay_lr_interval"], 
                 decay_gamma=self.hparams["additional_lr_decay_gamma"], 
+                overall_lr_scale=self.hparams['contrastive_overall_lr_scale'],
             )
         elif self.hparams['contrastive_optimizer'] == 'sgd':
             
