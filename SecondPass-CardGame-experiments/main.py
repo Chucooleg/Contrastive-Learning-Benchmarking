@@ -230,7 +230,8 @@ def main(args):
     )   
 
     # logger
-    run_name = '{};{}layer;{}head;warmup{};params{}K'.format(
+    run_name = '{};{};{}layer;{}head;warmup{};params{}K'.format(
+        hparams['vec_repr'] if hparams['model'] == 'contrastive' else '-',
         hparams['model'],
         hparams['N_enc'],
         hparams['num_heads'],
