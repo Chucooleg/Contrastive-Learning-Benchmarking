@@ -11,12 +11,12 @@
 
     "model": "contrastive",
 
-    "encoder": "transformer",
-    "decoder": "transformer",
     "d_ff":1024,
-    "num_heads":2,
     "N_enc":4,
-    "N_dec":4,
+    "num_heads":2,
+    "N_enc_key":4,
+    "num_heads_key":2,
+    
     "attn_wt_tying_scheme": "untie_QKVO",
     "attn_wt_dropout": 0.0,
     "heads_dropout": 0.0,

@@ -5,6 +5,7 @@ import numpy as np
 import math
 from collections import OrderedDict
 
+from dataraw_sampling import decode_key_to_vocab_token
 from transformer import construct_transformer_decoder, ScaledEmbedding, LearnedPositionEncoder
 
 
@@ -26,7 +27,7 @@ def construct_full_model(hparams):
     # 
     position_encoder = LearnedPositionEncoder(
         d_model=hparams['d_model'], 
-        max_len=hparams['max_len_q'] + hparams['len_k'] + 1, # <SEP>
+        max_len=hparams['max_len_q'] + hparams['len_k'] + 3,  # <SOS> <SEP> <EOS>
         emb_init_var=torch.var(querykey_embed_X.embedding.weight).cpu().item()
     )
 
@@ -49,6 +50,8 @@ def construct_full_model(hparams):
         key_support_size = hparams['key_support_size'],
         d_model = hparams['d_model'],
         vocab_size = hparams['vocab_size'],
+        vocab_by_property = hparams['vocab_by_property'],
+        len_k = hparams['len_k'],
         SOS = hparams['SOS'],
         EOS = hparams['EOS'],
         SEP = hparams['SEP'],
@@ -67,7 +70,7 @@ class DecoderPredictor(nn.Module):
 
     def __init__(
         self, inp_querykey_layer, querykey_decoder, classifier, key_support_size, 
-        d_model, vocab_size, SOS, EOS, SEP, PAD, NULL, PLH, num_attributes, num_attr_vals, debug=False):
+        d_model, vocab_size, vocab_by_property, len_k, SOS, EOS, SEP, PAD, NULL, PLH, num_attributes, num_attr_vals, debug=False):
         super().__init__()
         self.inp_querykey_layer = inp_querykey_layer
         self.querykey_decoder = querykey_decoder
@@ -83,6 +86,8 @@ class DecoderPredictor(nn.Module):
         self.NULL = NULL
         self.PLH = PLH
         self.vocab_size = vocab_size
+        self.vocab_by_property = vocab_by_property
+        self.len_k = len_k
         self.debug = debug
         if self.querykey_decoder:
             self.setup_all_keys()
@@ -90,10 +95,20 @@ class DecoderPredictor(nn.Module):
 
     def setup_all_keys(self):
 
+        if self.vocab_by_property:
+            # by key index
+            all_keys = np.empty((self.key_support_size, self.len_k))
+
+            for key_idx in range(self.key_support_size):
+                key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
+                all_keys[key_idx, :] = key_properties
+        else:
+            all_keys = np.arange(self.key_support_size)
+
         # (key_support_size, num_attributes)
         self.register_buffer(
             name='all_keys',
-            tensor= torch.tensor(np.arange(self.key_support_size), dtype=torch.long)
+            tensor= torch.tensor(all_keys, dtype=torch.long)
         )
 
     def forward(self, X_querykey, from_support, debug=False):
@@ -124,12 +139,13 @@ class DecoderPredictor(nn.Module):
         log_pxy = torch.empty(b, self.key_support_size).type_as(X_querykey).float()
 
         SEP_poses = torch.nonzero(X_querykey == self.SEP)[:,1]
+        EOS_poses = torch.nonzero(X_querykey == self.EOS)[:,1]
 
         for b_i in range(b):
-            SEP_pos = SEP_poses[b_i]
+            SEP_pos, EOS_pos  = SEP_poses[b_i], EOS_poses[b_i]
             # shape(self.key_support_size, inp_len)     
             X_query_allkeys = X_querykey[b_i].repeat(self.key_support_size, 1)
-            X_query_allkeys[:,SEP_pos+1] = self.all_keys
+            X_query_allkeys[:,SEP_pos+1:EOS_pos] = self.all_keys
             # shape(self.key_support_size, inp_len, V)
             query_allkey_logits = self.forward_minibatch(X_query_allkeys, debug=debug)
 

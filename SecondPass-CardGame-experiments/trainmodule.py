@@ -228,7 +228,7 @@ class GenerativeTrainModule(TrainModule):
 
     def training_step(self, batch, batch_nb):
         
-        # (b, len_q), (b, len_k), (b, support size)
+        # (b, inp_len), (b, support size)
         X_querykey = batch
         gt_binary = None
 
@@ -259,7 +259,7 @@ class GenerativeTrainModule(TrainModule):
         if not self.checkpoint_updated:
             self.hack_checkpoint_dir_name()
 
-        # (b, len_q), (b, len_k), (b, support size)
+        # (b, inp_len), (b, support size)
         X_querykey, gt_binary = batch
 
         _, loss, _, _ = self(
@@ -293,7 +293,7 @@ class GenerativeTrainModule(TrainModule):
     
     def test_step(self, batch, batch_nb):
 
-        # (b, len_q), (b, support size)
+        # (b, inp_len), (b, support size)
         X_querykey, gt_binary = batch
         
         # compute scores for all keys
@@ -379,9 +379,7 @@ class ContrastiveTrainModule(TrainModule):
         full_test_bool: boolean. 
         '''
         b, len_q = X_query.shape
-        assert len_q <= self.hparams['max_len_q']
-        if X_key is not None:
-            len_k = X_key.shape[1]
+        assert len_q <= self.hparams['max_len_q'] + 2 # with <EOS> and <SOS>
 
         # shape (b,support) if from_support else (b, b)
         logits = self.model(X_query, X_key, from_support=((not self.use_InfoNCE) or val_bool), debug=debug)
@@ -429,7 +427,7 @@ class ContrastiveTrainModule(TrainModule):
         if not self.checkpoint_updated:
             self.hack_checkpoint_dir_name()
 
-        # (b, len_q), (b, len_k), (b, support size)
+        # (b, len_q), (b, ), (b, support size)
         X_query, X_key, gt_binary = batch
         _, loss, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
         _, _, _, metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)

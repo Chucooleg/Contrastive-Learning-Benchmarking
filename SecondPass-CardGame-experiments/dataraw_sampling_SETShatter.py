@@ -765,7 +765,7 @@ def sample_queries_simple_shatter(
 
         'query_length_multiplier': query_length_multiplier,
         'max_len_q': max_len_q,
-        'len_k': (1*num_attributes),
+        'len_k': 1,
         
         #################################        
         'train_gt_idxs': [],
@@ -897,7 +897,7 @@ def sample_queries(
 
         'query_length_multiplier': query_length_multiplier,
         'max_len_q': max_len_q,
-        'len_k': (1*num_attributes),
+        'len_k': 1,
         
         #################################        
         'train_gt_idxs': gt_idxs[:N_train],

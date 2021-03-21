@@ -7,12 +7,12 @@ import math
 import numpy as np
 
 
-def construct_transformer_encoder(hparams):
+def construct_transformer_encoder(hparams, key_bool=False):
     '''return nn.Module'''
     pff = Positiontwise_FF(d_model=hparams['d_model'], d_ff=hparams['d_ff'])
     attn = MultiHeadAttention(
         d_model=hparams['d_model'], 
-        h=hparams['num_heads'], 
+        h=hparams['num_heads_key'] if key_bool else hparams['num_heads'], 
         attn_wt_dropout=hparams['attn_wt_dropout'],
         attn_wt_tying_scheme=hparams['attn_wt_tying_scheme']
     )
@@ -26,7 +26,7 @@ def construct_transformer_encoder(hparams):
                 heads_dropout=hparams['heads_dropout'],
                 pff_dropout=hparams['pff_dropout']
             ), 
-            N_layers=hparams['N_enc'],
+            N_layers= hparams['N_enc_key'] if key_bool else hparams['N_enc'],
             d_model=hparams['d_model'],
             mask_forward=False
         )

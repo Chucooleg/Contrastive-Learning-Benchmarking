@@ -75,8 +75,10 @@ def load_hparams(args, data):
         for k in ('(', ')', 'NULL', 'SEP', 'SOS', 'EOS', 'PAD', 'PLH', '&', '|'):
             hparams[k] = sym_lookup[k]
 
-        hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
-        hparams['len_k'] = data['len_k'] + 1 if hparams['vocab_by_property'] else 1
+        hparams['max_len_q'] = data['max_len_q'] 
+        hparams['len_k'] = data['len_k']
+        if not hparams['vocab_by_property']:
+            assert hparams['len_k'] == 1
 
         assert hparams['model'] in ("contrastive", "generative")
 
@@ -210,8 +212,6 @@ def main(args):
         if not val.lower() in ('yes', 'y'):
             sys.exit(1)
 
-        hparams['key_support_size']
-
     pl.seed_everything(hparams['seed'])
 
     # model
@@ -230,17 +230,36 @@ def main(args):
     )   
 
     # logger
-    run_name = '{};{};{}layer;{}head;warmup{};params{}K'.format(
-        hparams['vec_repr'] if hparams['model'] == 'contrastive' else '-',
-        hparams['model'],
-        hparams['N_enc'],
-        hparams['num_heads'],
-        hparams['scheduled_adam_warmup_steps'],
-        round(max(model_summary.param_nums)/1000,2))
+    if hparams['model'] == 'contrastive':
+        if hparams['contrastive_optimizer'] == 'adam':
+            Opt_str = 'adam{}'.format(hparams['adam_lr'])
+        elif hparams['contrastive_optimizer'] == 'sgd'::
+            Opt_str = 'sgd{}'.format(hparams['sgd_lr'])
+        else:
+            Opt_str = 'scheduledAdamW{}'.format(hparams['scheduled_adam_warmup_steps'])
+        run_name = 'Con;Vec{};L{}H{}Lk{}Hk{};{};{}Kparams'.format(
+            hparams['vec_repr'],
+            hparams['N_enc'],
+            hparams['num_heads'],
+            hparams['N_enc_key'],
+            hparams['num_heads_key'],
+            Opt_str,
+            round(max(model_summary.param_nums)/1000,2)
+        )
+    else:
+        Opt_str = 'scheduledAdamW{}'.format(hparams['scheduled_adam_warmup_steps'])
+        run_name = 'Gen;L{}H{};{};{}Kparams'.format(
+            hparams['N_enc'],
+            hparams['num_heads'],
+            Opt_str,
+            round(max(model_summary.param_nums)/1000,2)
+        )
+
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
     # project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests-27'
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-9cards'
     project_name = args.project_name
+
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:
@@ -297,7 +316,7 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt_name', default=None, help='must provide if resume training or testing')
     parser.add_argument('--gpu', help='gpu id', type=int)
     parser.add_argument(
-        '--approve_before_training', help='1/0. Prompt for user to approve model configuration for training.', action='store_true'
+        '--approve_before_training', help='Prompt for user to approve model configuration for training.', action='store_true'
     )  
 
     # args and init
