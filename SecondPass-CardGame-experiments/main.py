@@ -66,16 +66,13 @@ def load_hparams(args, data):
         hparams['query_length_multiplier'] = data['query_length_multiplier']
         hparams['multiple_OR_sets_bool'] = data['multiple_OR_sets_bool']
         hparams['vocab_size'] = data['vocab_size']
-        hparams['('] = data['(']
-        hparams[')'] = data[')']
-        hparams['NULL'] = data['NULL']
-        hparams['SEP'] = data['SEP']
-        hparams['SOS'] = data['SOS']
-        hparams['EOS'] = data['EOS']
-        hparams['PAD'] = data['PAD']
-        hparams['PLH'] = data['PLH']
-        hparams['&'] = data['&']
-        hparams['|'] = data['|']
+        
+        if 'symbol_vocab_token_lookup' in data.keys():
+            sym_lookup = data['symbol_vocab_token_lookup']
+        else:
+            sym_lookup = data
+        for k in ('(', ')', 'NULL', 'SEP', 'SOS', 'EOS', 'PAD', 'PLH', '&', '|'):
+            hparams[k] = sym_lookup[k]
 
         hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
         hparams['len_k'] = data['len_k']

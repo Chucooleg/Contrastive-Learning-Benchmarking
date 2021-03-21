@@ -781,16 +781,18 @@ def sample_queries_simple_shatter(
         #################################
 
         'vocab_size': base_vocab_size + len(symbol_vocab_token_lookup),
-        '(': symbol_vocab_token_lookup['('],
-        ')': symbol_vocab_token_lookup[')'],
-        'NULL': symbol_vocab_token_lookup['NULL'],
-        'SEP': symbol_vocab_token_lookup['SEP'],
-        'SOS': symbol_vocab_token_lookup['SOS'],
-        'EOS': symbol_vocab_token_lookup['EOS'],
-        'PAD': symbol_vocab_token_lookup['PAD'],
-        'PLH': symbol_vocab_token_lookup['PLH'],
-        '&': symbol_vocab_token_lookup['&'],
-        '|': symbol_vocab_token_lookup['|'],
+        'symbol_vocab_token_lookup': symbol_vocab_token_lookup,
+
+        # '(': symbol_vocab_token_lookup['('],
+        # ')': symbol_vocab_token_lookup[')'],
+        # 'NULL': symbol_vocab_token_lookup['NULL'],
+        # 'SEP': symbol_vocab_token_lookup['SEP'],
+        # 'SOS': symbol_vocab_token_lookup['SOS'],
+        # 'EOS': symbol_vocab_token_lookup['EOS'],
+        # 'PAD': symbol_vocab_token_lookup['PAD'],
+        # 'PLH': symbol_vocab_token_lookup['PLH'],
+        # '&': symbol_vocab_token_lookup['&'],
+        # '|': symbol_vocab_token_lookup['|'],
         
         #################################
     }
@@ -908,16 +910,18 @@ def sample_queries(
         #################################
 
         'vocab_size': base_vocab_size + len(symbol_vocab_token_lookup),
-        '(': symbol_vocab_token_lookup['('],
-        ')': symbol_vocab_token_lookup[')'],
-        'NULL': symbol_vocab_token_lookup['NULL'],
-        'SEP': symbol_vocab_token_lookup['SEP'],
-        'SOS': symbol_vocab_token_lookup['SOS'],
-        'EOS': symbol_vocab_token_lookup['EOS'],
-        'PAD': symbol_vocab_token_lookup['PAD'],
-        'PLH': symbol_vocab_token_lookup['PLH'],
-        '&': symbol_vocab_token_lookup['&'],
-        '|': symbol_vocab_token_lookup['|'],
+        'symbol_vocab_token_lookup': symbol_vocab_token_lookup,
+
+        # '(': symbol_vocab_token_lookup['('],
+        # ')': symbol_vocab_token_lookup[')'],
+        # 'NULL': symbol_vocab_token_lookup['NULL'],
+        # 'SEP': symbol_vocab_token_lookup['SEP'],
+        # 'SOS': symbol_vocab_token_lookup['SOS'],
+        # 'EOS': symbol_vocab_token_lookup['EOS'],
+        # 'PAD': symbol_vocab_token_lookup['PAD'],
+        # 'PLH': symbol_vocab_token_lookup['PLH'],
+        # '&': symbol_vocab_token_lookup['&'],
+        # '|': symbol_vocab_token_lookup['|'],
         
         #################################
     }
