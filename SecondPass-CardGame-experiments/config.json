@@ -3,17 +3,17 @@
 
     "batch_size": 1024,
     "max_epochs": 10000000000,
-    "val_every_n_epoch": 5000,
+    "val_every_n_epoch": 50,
 
     "d_model": 512,
     "embed_dropout": 0.0,
-    "vec_repr": 64,
+    "vec_repr": 512,
 
     "model": "contrastive",
 
     "d_ff":1024,
-    "N_enc":4,
-    "num_heads":2,
+    "N_enc":2,
+    "num_heads":1,
     "N_enc_key":4,
     "num_heads_key":2,
     
@@ -32,7 +32,7 @@
 
     "contrastive_optimizer": "scheduled_adam",
 
-    "adam_lr": 1e-05,
+    "adam_lr": 1e-06,
     "adam_beta1": 0.9,
     "adam_beta2": 0.999,
     "adam_epsilon": 1e-08,

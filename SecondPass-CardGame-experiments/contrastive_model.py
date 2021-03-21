@@ -37,11 +37,11 @@ def construct_full_model(hparams):
     )
 
     # # original
-    # key_projection = nn.Sequential(
-    #     nn.Linear(hparams['d_model'],hparams['d_model']),
-    #     nn.ReLU(),
-    #     nn.Linear(hparams['d_model'],hparams['vec_repr'])
-    # )
+    key_projection = nn.Sequential(
+        nn.Linear(hparams['d_model'],hparams['d_model']),
+        nn.ReLU(),
+        nn.Linear(hparams['d_model'],hparams['vec_repr'])
+    )
 
     # # with one layer norm d_model, d_ff, vec_repr
     # key_projection = nn.Sequential(
@@ -52,12 +52,12 @@ def construct_full_model(hparams):
     # )
 
     # with one layer norm d_model, d_ff, vec_repr
-    key_projection = nn.Sequential(
-        nn.Linear(hparams['d_model'],hparams['d_ff']),
-        nn.ReLU(),
-        nn.Linear(hparams['d_ff'],hparams['vec_repr']),
-        LayerNorm(hparams['vec_repr'])
-    )
+    # key_projection = nn.Sequential(
+    #     nn.Linear(hparams['d_model'],hparams['d_ff']),
+    #     nn.ReLU(),
+    #     nn.Linear(hparams['d_ff'],hparams['vec_repr']),
+    #     LayerNorm(hparams['vec_repr'])
+    # )
 
     # # with one layer norm d_model, d_model, vec_repr
     # key_projection = nn.Sequential(

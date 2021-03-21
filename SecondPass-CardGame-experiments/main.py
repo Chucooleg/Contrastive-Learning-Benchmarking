@@ -233,7 +233,7 @@ def main(args):
     if hparams['model'] == 'contrastive':
         if hparams['contrastive_optimizer'] == 'adam':
             Opt_str = 'adam{}'.format(hparams['adam_lr'])
-        elif hparams['contrastive_optimizer'] == 'sgd'::
+        elif hparams['contrastive_optimizer'] == 'sgd':
             Opt_str = 'sgd{}'.format(hparams['sgd_lr'])
         else:
             Opt_str = 'scheduledAdamW{}'.format(hparams['scheduled_adam_warmup_steps'])

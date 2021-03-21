@@ -227,7 +227,7 @@ class GenerativeTrainModule(TrainModule):
     ###################################################
 
     def training_step(self, batch, batch_nb):
-        
+
         # (b, inp_len), (b, support size)
         X_querykey = batch
         gt_binary = None
@@ -399,7 +399,7 @@ class ContrastiveTrainModule(TrainModule):
     ###################################################
 
     def training_step(self, batch, batch_nb):
-        
+
         # (b, len_q), (b, len_k), (b, support size)
         X_query, X_key = batch
         gt_binary = None
@@ -423,7 +423,7 @@ class ContrastiveTrainModule(TrainModule):
         return loss
 
     def validation_step(self, batch, batch_nb):
-        
+
         if not self.checkpoint_updated:
             self.hack_checkpoint_dir_name()
 

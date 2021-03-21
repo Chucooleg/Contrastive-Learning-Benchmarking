@@ -11,6 +11,8 @@ import numpy as np
 import time
 
 ####################################################################################
+def decode_key_to_vocab_token(num_attributes, num_attr_vals, key_idx):
+    raise NotImplmentedError
 
 def encode_vocab_token_to_key_properties(num_attributes, num_attr_vals, vocab_tokens):
     '''
@@ -148,8 +150,6 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)
-
-        print((q_vocab_tokens, k_vocab_tokens))
         
         # stats
         max_len_q = max(max_len_q, len(q_vocab_tokens))
