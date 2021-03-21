@@ -13,7 +13,6 @@ def construct_full_model(hparams):
     return: nn.Module.
     '''
     # embeddings
-    assert hparams['embedding_by_property'] and hparams['decoder'] == 'transformer'
     querykey_embed_X = ScaledEmbedding(
         V=hparams['vocab_size'],
         d_model=hparams['d_model'], 
@@ -29,7 +28,7 @@ def construct_full_model(hparams):
         d_model=hparams['d_model'], 
         max_len=hparams['max_len_q'] + hparams['len_k'] + 1, # <SEP>
         emb_init_var=torch.var(querykey_embed_X.embedding.weight).cpu().item()
-    ) if hparams['embedding_by_property'] else None
+    )
 
     inp_querykey_layer = [
                 ('scaled_embed', querykey_embed_X),

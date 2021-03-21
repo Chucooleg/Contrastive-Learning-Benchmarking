@@ -71,7 +71,7 @@ def construct_full_model(hparams):
         d_model=hparams['d_model'], 
         max_len=max(hparams['max_len_q'], hparams['len_k']),
         emb_init_var=torch.var(query_embed_X.embedding.weight).cpu().item()
-    ) if hparams['embedding_by_property'] else None
+    )
 
     inp_query_layer = [
         ('scaled_embed', query_embed_X), 
@@ -109,6 +109,7 @@ def construct_full_model(hparams):
         d_model = hparams['d_model'],
         vec_repr = hparams['vec_repr'],
         vocab_size = hparams['vocab_size'],
+        vocab_by_property = hparams['vocab_by_property'],
         SOS = hparams['SOS'],
         PAD = hparams['PAD'],
         NULL = hparams['NULL'],
@@ -126,7 +127,7 @@ class EncoderPredictor(nn.Module):
     
     def __init__(
         self, inp_query_layer, inp_key_layer, query_encoder, key_encoder, query_projection, key_projection, classifier, 
-        key_support_size, d_model, vec_repr, vocab_size, SOS, PAD, NULL, num_attributes, num_attr_vals, repr_pos, 
+        key_support_size, d_model, vec_repr, vocab_size, vocab_by_property, SOS, PAD, NULL, num_attributes, num_attr_vals, repr_pos, 
         normalize_dotproduct, debug=False
         ):
         super().__init__()
@@ -142,6 +143,7 @@ class EncoderPredictor(nn.Module):
         self.d_model = d_model
         self.vec_repr = vec_repr
         self.vocab_size = vocab_size
+        self.vocab_by_property = vocab_by_property
         self.SOS = SOS
         self.PAD = PAD
         self.NULL = NULL
@@ -162,12 +164,21 @@ class EncoderPredictor(nn.Module):
         #     key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
         #     all_keys[key_idx, :] = np.concatenate([key_properties])
 
+
+        if self.vocab_by_property:
+            ???
+
+        else:
+            all_keys =np.arange(self.key_support_size).reshape(-1, 1)
+            # register all keys (for testing)
+
         # register all keys (for testing)
-        # (key_support_size, num_attributes)
         self.register_buffer(
             name='all_keys',
             tensor= torch.tensor(all_keys, dtype=torch.long)
         )
+
+
 
     def validate_arguments(self):
         if self.query_encoder or self.key_encoder:
@@ -316,9 +327,9 @@ class EncoderPredictor(nn.Module):
 
     def encode_all_keys(self):
         X = self.all_keys
-        # shape(size(support), l=1, embed_dim)
+        # shape(size(support), l=inp_len, embed_dim)
         inp_embed = self.inp_key_layer(X)
-        assert inp_embed.shape == (self.key_support_size, 1, self.d_model)
+        
         
         # shape(size(support), vec_repr)
         return self.key_projection(inp_embed.squeeze(1))

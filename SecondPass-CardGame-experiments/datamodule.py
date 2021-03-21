@@ -10,7 +10,6 @@ class GameDataModule(pl.LightningDataModule):
     def __init__(self, hparams, raw_data):
         super().__init__()
         self.batch_size = hparams['batch_size']
-        self.embedding_by_property = hparams['embedding_by_property']
         self.PAD = hparams['PAD']
         self.model_typ = hparams['model']
         self.train_dataset = GameDatasetTrainDataset(

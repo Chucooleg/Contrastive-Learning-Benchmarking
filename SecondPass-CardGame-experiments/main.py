@@ -66,7 +66,8 @@ def load_hparams(args, data):
         hparams['query_length_multiplier'] = data['query_length_multiplier']
         hparams['multiple_OR_sets_bool'] = data['multiple_OR_sets_bool']
         hparams['vocab_size'] = data['vocab_size']
-        
+
+        hparams['vocab_by_property'] = data['vocab_by_property']
         if 'symbol_vocab_token_lookup' in data.keys():
             sym_lookup = data['symbol_vocab_token_lookup']
         else:
@@ -75,15 +76,9 @@ def load_hparams(args, data):
             hparams[k] = sym_lookup[k]
 
         hparams['max_len_q'] = data['max_len_q'] + 2 # <SOS>---
-        hparams['len_k'] = data['len_k']
+        hparams['len_k'] = data['len_k'] + 1 if hparams['vocab_by_property'] else 1
 
         assert hparams['model'] in ("contrastive", "generative")
-        if hparams['embedding_by_property']:
-            assert hparams["encoder"] in ('transformer')
-            assert hparams["decoder"] in ('transformer')
-        else:
-            hparams["encoder"] = 'lookup'
-            hparams["decoder"] = 'lookup'
 
     if hparams['model'] == 'contrastive' and (not 'contrastive_use_infoNCE' in hparams):
         hparams['contrastive_use_infoNCE'] = True

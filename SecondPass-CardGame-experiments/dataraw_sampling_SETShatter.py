@@ -782,6 +782,7 @@ def sample_queries_simple_shatter(
 
         'vocab_size': base_vocab_size + len(symbol_vocab_token_lookup),
         'symbol_vocab_token_lookup': symbol_vocab_token_lookup,
+        'vocab_by_property': False,
 
         # '(': symbol_vocab_token_lookup['('],
         # ')': symbol_vocab_token_lookup[')'],
@@ -911,6 +912,7 @@ def sample_queries(
 
         'vocab_size': base_vocab_size + len(symbol_vocab_token_lookup),
         'symbol_vocab_token_lookup': symbol_vocab_token_lookup,
+        'vocab_by_property': False,
 
         # '(': symbol_vocab_token_lookup['('],
         # ')': symbol_vocab_token_lookup[')'],
