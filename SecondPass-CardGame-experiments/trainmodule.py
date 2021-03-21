@@ -1,4 +1,4 @@
-
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -38,6 +38,18 @@ class TrainModule(pl.LightningModule):
             key_support_size=self.hparams['key_support_size'])
 
         self.extra_monitors = hparams['extra_monitors']
+        self.checkpoint_updated = False
+
+    ###################################################
+    # hack checkpoint dir name to add runID
+    def hack_checkpoint_dir_name(self):
+        old_dir_path = self.trainer.callbacks[-1].dirpath
+        new_dir_path = self.trainer.callbacks[-1].dirpath + '_runId_' + self.logger._experiment._run_id
+        self.trainer.callbacks[-1].dirpath = new_dir_path
+        os.mkdir(new_dir_path)
+        os.rename(os.path.join(old_dir_path, 'config.json'), os.path.join(new_dir_path, 'config.json'))
+        os.rmdir(old_dir_path)
+        self.checkpoint_updated = True
 
    ###################################################
 
@@ -244,6 +256,9 @@ class GenerativeTrainModule(TrainModule):
 
     def validation_step(self, batch, batch_nb):
 
+        if not self.checkpoint_updated:
+            self.hack_checkpoint_dir_name()
+
         # (b, len_q), (b, len_k), (b, support size)
         X_querykey, gt_binary = batch
 
@@ -410,6 +425,10 @@ class ContrastiveTrainModule(TrainModule):
         return loss
 
     def validation_step(self, batch, batch_nb):
+        
+        if not self.checkpoint_updated:
+            self.hack_checkpoint_dir_name()
+
         # (b, len_q), (b, len_k), (b, support size)
         X_query, X_key, gt_binary = batch
         _, loss, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)

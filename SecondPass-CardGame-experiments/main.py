@@ -21,6 +21,14 @@ from trainmodule import ContrastiveTrainModule, GenerativeTrainModule
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 
+# import azureml.core
+
+# # set the wandb API key to an environment variable and log in
+# run = azureml.core.Run.get_context()
+# os.environ['WANDB_API_KEY'] = run.get_secret(name='WANDBAPIKEY')
+# wandb.login()
+
+
 def load_data(data_path):
     with open(data_path, 'r') as f:
         data = json.load(f)
@@ -189,10 +197,10 @@ def validate_inputs(args, hparams):
     assert os.path.exists(args.config_path), 'config_path does not exist'
     assert os.path.exists(args.data_path), 'data_path does not exist' 
     assert os.path.exists(args.checkpoint_dir), f'checkpoint_dir {args.checkpoint_dir} does not exist'
+    assert args.project_name, 'missing project name. e.g. ContrastiveLearning-cardgame-Scaling'
     assert args.mode in ('train', 'resume_train', 'test_full', 'param_summary')
     if args.mode in ('resume_train', 'test_full'):
         assert args.runID, 'missing runID, e.g. 1lygiuq3'
-        assert args.project_name, 'missing project_name. e.g. ContrastiveLearning-cardgame-Scaling'
     if args.mode == 'test_full':
         assert args.ckpt_name, 'missing ckpt_name for testing. e.g. last.ckpt'
 
@@ -238,8 +246,9 @@ def main(args):
         hparams['scheduled_adam_warmup_steps'],
         round(max(model_summary.param_nums)/1000,2))
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests-27'
+    # project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests-27'
     # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-9cards'
+    project_name = args.project_name
     if args.mode == 'train':
         wd_logger = WandbLogger(name=run_name, project=project_name)
     else:
@@ -296,7 +305,7 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt_name', default=None, help='must provide if resume training or testing')
     parser.add_argument('--gpu', help='gpu id', type=int)
     parser.add_argument(
-        '--approve_before_training', help='1/0. Prompt for user to approve model configuration for training.', type=int
+        '--approve_before_training', help='1/0. Prompt for user to approve model configuration for training.', action='store_true'
     )  
 
     # args and init
