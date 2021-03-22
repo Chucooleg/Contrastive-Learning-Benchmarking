@@ -64,81 +64,88 @@ def encode_key_idx(num_attributes, num_attr_vals, key_properties):
     return int(key_idx)
 
 ################################################################################################
-# def SET_derive_property(prop1, prop2):
-#     '''prop1, prop2 are integers'''
-#     props = {0,1,2}
-#     assert prop1 in props and prop2 in props    
-#     if prop1 == prop2: 
-#         return prop1
-#     else:
-#         return list(props - {prop1, prop2})[0]
+def resolve_prop(prop1, prop2, all_vals_tuple, all_vals_set):
+    if prop1 == len(all_vals_tuple) or prop2 == len(all_vals_tuple): # '*' symbol
+        return all_vals_tuple
+    elif prop1 == prop2:
+        return (prop1,)
+    else:
+        return tuple(all_vals_set - set([prop1, prop2]))
+    
+def resolve(card1_prop, card2_prop, all_vals_list, all_vals_set):
+    '''
+    card1_prop/card2_prop: [1, 0 ,*], [2,0,1]
+    return answer cards
+    '''
+    ind_ans = [resolve_prop(prop1, prop2, all_vals_list, all_vals_set) for prop1, prop2 in zip(card1_prop, card2_prop)]
+    return list(itertools.product(*ind_ans))
 
-# def SET_cardpair_resolve_fn(card1, card2):
-#     assert card1.shape == card2.shape
-#     return np.array([SET_derive_property(card1[i], card2[i]) for i in range(len(card1))])
+def draw_cardpair_props(num_attributes, num_attr_vals):
+    all_vals_tuple = (0,1,2) 
+    all_vals_set = set(all_vals_tuple)
+    
+    card1_prop = np.random.choice(a=num_attr_vals, size=num_attributes, replace=True) # 0, 1, 2
+    card2_prop = np.random.choice(a=num_attr_vals+1, size=num_attributes, replace=True) # 0, 1, 2, 3
+    keys_prop = resolve(card1_prop, card2_prop, all_vals_tuple, all_vals_set)
 
-# def eval_cardpair_by_idx(num_attributes, num_attr_vals, querycard1_idx, querycard2_idx, debug=False):
-#     qc1_properties = decode_key_idx(num_attributes, num_attr_vals, querycard1_idx)
-#     qc2_properties = decode_key_idx(num_attributes, num_attr_vals, querycard2_idx)
-#     if debug: print(qc1_properties, ' | ', qc2_properties)
-#     key_properties = SET_cardpair_resolve_fn(qc1_properties, qc2_properties)
-#     key_idx = encode_key_idx(num_attributes, num_attr_vals, key_properties)
-#     return key_idx, key_properties
+    return card1_prop, card2_prop, keys_prop
 
-# def construct_cardpair_answer_lookup(num_attributes, num_attr_vals, debug=False):
-#     '''Simple SET'''
-#     num_cards = num_attr_vals**num_attributes
-#     lookup = {}
-#     for card1, card2 in itertools.combinations(list(range(num_cards)), 2):
-#         card1_properties = decode_key_idx(num_attributes, num_attr_vals, card1)
-#         card2_properties = decode_key_idx(num_attributes, num_attr_vals, card2)
-#         card3, card3_properties = eval_cardpair_by_idx(num_attributes, num_attr_vals, card1, card2, debug=debug)
-#         if debug: print (card1_properties, card2_properties, card3_properties, card1, card2, card3)
-#         lookup[(card1, card2)] = card3
-#     for card in range(num_cards):
-#         lookup[(card, card)] = card
-#     return lookup
+def construct_card_idx_lookup(num_attributes, num_attr_vals):
+    
+    all_card_props = list(itertools.product(*[list(range(4)) for _ in range(num_attributes)]))
+    
+    card2idx_lookup = {}
+    idx2card_lookup = {}
+    
+    curr_wild_card_idx = num_attr_vals ** num_attributes # first card without *
+
+    for prop in all_card_props:
+        if 3 in prop:
+            # cards with * start after all key indices
+            card2idx_lookup[prop] = curr_wild_card_idx
+            idx2card_lookup[curr_wild_card_idx] = prop
+            curr_wild_card_idx += 1
+        else:
+            # key indices are still valid
+            card_idx = encode_key_idx(num_attributes, num_attr_vals, np.array(prop))
+            card2idx_lookup[prop] = card_idx
+            idx2card_lookup[card_idx] = prop
+            
+    return card2idx_lookup, idx2card_lookup
 
 ####################################################################################
 
-# TODO here!!!!
+def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup):
 
-def sample_one_training_datapoint(num_keys, num_attributes, num_attr_vals, cardpair_answer_lookup, symbol_vocab_token_lookup, return_gt=False):
-    '''Simple SET'''
-    card1_idx = np.random.choice(num_keys)
-    card2_idx = np.random.choice(num_keys)
+    card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
+
+    card1_idx = card2idx_lookup[tuple(card1_prop)]
+    card2_idx = card2idx_lookup[tuple(card2_prop)]
 
     q_vocab_tokens = [card1_idx, card2_idx]
-    
-    # int
-    k_vocab_tokens = cardpair_answer_lookup[(min(card1_idx, card2_idx), max(card1_idx, card2_idx))]
 
-    if return_gt:
-        gt_ks_idx = [k_vocab_tokens]
-    else:
-        gt_ks_idx = None
+    gt_ks_idx = [card2idx_lookup[kp] for kp in keys_prop]
+    k_vocab_tokens = random.choice(gt_ks_idx)
 
     # list, list, list
     return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
-
-
 
 
 def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     '''Simple SET'''
 
     num_keys = num_attr_vals**num_attributes
+    num_any_keys = (num_attr_vals+1)**num_attributes
     N = N_train + N_val + N_test
     
     tokens = []
     gt_idxs = []
 
-
     start_time = time.time()
-    cardpair_answer_lookup = construct_cardpair_answer_lookup(num_attributes, num_attr_vals)
+    card2idx_lookup, idx2card_lookup = construct_card_idx_lookup(num_attributes, num_attr_vals)
     print('Time to build cardpair_answer_lookup:', time.time()-start_time, 'seconds')
 
-    base_vocab_size =  num_keys
+    base_vocab_size =  (num_attr_vals+1)**num_attributes # include * cards
     symbol_vocab_token_lookup = {
         '(': base_vocab_size,
         ')': base_vocab_size + 1,
@@ -154,7 +161,11 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     
     max_len_q = 2
     for i in tqdm(range(N)):
-        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_keys, num_attributes, num_attr_vals, cardpair_answer_lookup, symbol_vocab_token_lookup, return_gt=True)
+        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(
+            num_attributes=num_attributes, 
+            num_attr_vals=num_attr_vals, 
+            card2idx_lookup=card2idx_lookup, 
+        )
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)

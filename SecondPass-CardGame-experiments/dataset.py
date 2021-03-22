@@ -6,7 +6,7 @@ import random
 
 from dataraw_sampling import (
     sample_one_training_datapoint, 
-    construct_cardpair_answer_lookup)
+    construct_card_idx_lookup)
 
 # from dataraw_sampling_SimpleSET_prop_wildcard import (
 #     sample_one_training_datapoint, 
@@ -61,13 +61,13 @@ class GameDatasetFromDataPoints(Dataset):
 
 
 class GameDatasetTrainDataset(GameDatasetFromDataPoints):
-    '''On the fly Simple SET'''
+    '''On the fly WildCard SET'''
     
     def __init__(self, hparams):
         super().__init__(hparams)
         self.split = 'train'
 
-        self.cardpair_answer_lookup = construct_cardpair_answer_lookup(
+        self.card2idx_lookup, _ = construct_card_idx_lookup(
             self.num_attributes, self.num_attr_vals)
 
         self.symbol_vocab_token_lookup = {
@@ -90,12 +90,10 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
 
         # list, list if vocab_by_property else int 
         y_vocab_tokens, x_vocab_tokens, _ = sample_one_training_datapoint(
-            num_keys = self.key_support_size, 
             num_attributes = self.num_attributes, 
             num_attr_vals = self.num_attr_vals, 
-            cardpair_answer_lookup = self.cardpair_answer_lookup, 
-            symbol_vocab_token_lookup = self.symbol_vocab_token_lookup,
-            return_gt=False)
+            card2idx_lookup = self.card2idx_lookup,
+        )
         
         if self.debug:
             print('query\n', y_vocab_tokens)
@@ -116,6 +114,64 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
                     torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
                     torch.tensor(x_vocab_tokens).long(), # X key
                 )
+
+
+# class GameDatasetTrainDataset(GameDatasetFromDataPoints):
+#     '''On the fly Simple SET'''
+    
+#     def __init__(self, hparams):
+#         super().__init__(hparams)
+#         self.split = 'train'
+
+#         self.cardpair_answer_lookup = construct_cardpair_answer_lookup(
+#             self.num_attributes, self.num_attr_vals)
+
+#         self.symbol_vocab_token_lookup = {
+#             '(': hparams['('],
+#             ')': hparams[')'],
+#             'NULL': hparams['NULL'],
+#             'SEP': hparams['SEP'],
+#             'SOS': hparams['SOS'],
+#             'EOS': hparams['EOS'],
+#             'PAD': hparams['PAD'],
+#             'PLH': hparams['PLH'],
+#             '&': hparams['&'],
+#             '|': hparams['|'],
+#         }
+        
+#     def __len__(self):
+#         return self.key_support_size
+            
+#     def __getitem__(self, idx):
+
+#         # list, list if vocab_by_property else int 
+#         y_vocab_tokens, x_vocab_tokens, _ = sample_one_training_datapoint(
+#             num_keys = self.key_support_size, 
+#             num_attributes = self.num_attributes, 
+#             num_attr_vals = self.num_attr_vals, 
+#             cardpair_answer_lookup = self.cardpair_answer_lookup, 
+#             symbol_vocab_token_lookup = self.symbol_vocab_token_lookup,
+#             return_gt=False)
+        
+#         if self.debug:
+#             print('query\n', y_vocab_tokens)
+#             print('key\n', x_vocab_tokens)
+
+#         if self.model_typ == 'generative':
+#             return (
+#                 torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + x_vocab_tokens + [self.EOS]).long(), # X querykey
+#             )
+#         else:
+#             if self.vocab_by_property:
+#                 return (
+#                     torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+#                     torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # X key
+#                 )    
+#             else:
+#                 return (
+#                     torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+#                     torch.tensor(x_vocab_tokens).long(), # X key
+#                 )
 
 
 # class GameDatasetTrainDataset(GameDatasetFromDataPoints):
