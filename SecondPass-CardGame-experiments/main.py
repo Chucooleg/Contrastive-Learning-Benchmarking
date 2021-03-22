@@ -191,6 +191,23 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
     # monitors
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
+    # https://discuss.pytorch.org/t/i-have-3-gpu-why-torch-cuda-device-count-only-return-1/7245/4
+    import torch
+    import sys
+    print('__Python VERSION:', sys.version)
+    print('__pyTorch VERSION:', torch.__version__)
+    print('__CUDA VERSION')
+    from subprocess import call
+    # call(["nvcc", "--version"]) does not work
+    print('__CUDNN VERSION:', torch.backends.cudnn.version())
+    print('__Number CUDA Devices:', torch.cuda.device_count())
+    print('__Devices')
+    call(["nvidia-smi", "--format=csv", "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free"])
+    print('Active CUDA Device: GPU', torch.cuda.current_device())
+
+    print ('Available devices ', torch.cuda.device_count())
+    print ('Current cuda device ', torch.cuda.current_device())
+
     # trainer
     trainer = pl.Trainer(
         gpus=[args.gpu], 
@@ -342,7 +359,7 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt_name', default=None, help='must provide if resume training or testing')
     parser.add_argument('--gpu', help='gpu id', type=int)
     parser.add_argument(
-        '--approve_before_training', help='1/0. Prompt for user to approve model configuration for training.'
+        '--approve_before_training', help='Prompt for user to approve model configuration for training.', action='store_true'
     )
     parser.add_argument('--aml', help='add this flag if running via AML', action='store_true')
 
