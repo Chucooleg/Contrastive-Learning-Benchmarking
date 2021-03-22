@@ -5,6 +5,7 @@ import time
 import datetime
 import pprint
 import numpy as np
+import shutil
 
 import torch
 from torch.utils.data import DataLoader
@@ -58,29 +59,32 @@ def load_hparams(args, data):
     with open(args.config_path, 'r') as f:
         hparams = json.load(f)
 
-    if args.mode in ('train', 'param_summary'):
-        hparams['key_support_size'] = data['key_support_size']
-        hparams['num_attributes'] = data['num_attributes']
-        hparams['num_attr_vals'] = data['num_attr_vals']
-        hparams['nest_depth_int'] = data['nest_depth_int']
-        hparams['query_length_multiplier'] = data['query_length_multiplier']
-        hparams['multiple_OR_sets_bool'] = data['multiple_OR_sets_bool']
-        hparams['vocab_size'] = data['vocab_size']
+    hparams['mode'] = args.mode
+    #####################
+    hparams['key_support_size'] = data['key_support_size']
+    hparams['num_attributes'] = data['num_attributes']
+    hparams['num_attr_vals'] = data['num_attr_vals']
+    hparams['nest_depth_int'] = data['nest_depth_int']
+    hparams['query_length_multiplier'] = data['query_length_multiplier']
+    hparams['multiple_OR_sets_bool'] = data['multiple_OR_sets_bool']
+    hparams['vocab_size'] = data['vocab_size']
 
-        hparams['vocab_by_property'] = data['vocab_by_property']
-        if 'symbol_vocab_token_lookup' in data.keys():
-            sym_lookup = data['symbol_vocab_token_lookup']
-        else:
-            sym_lookup = data
-        for k in ('(', ')', 'NULL', 'SEP', 'SOS', 'EOS', 'PAD', 'PLH', '&', '|'):
-            hparams[k] = sym_lookup[k]
+    hparams['vocab_by_property'] = data['vocab_by_property']
+    if 'symbol_vocab_token_lookup' in data.keys():
+        sym_lookup = data['symbol_vocab_token_lookup']
+    else:
+        sym_lookup = data
+    for k in ('(', ')', 'NULL', 'SEP', 'SOS', 'EOS', 'PAD', 'PLH', '&', '|'):
+        hparams[k] = sym_lookup[k]
 
-        hparams['max_len_q'] = data['max_len_q'] 
-        hparams['len_k'] = data['len_k']
-        if not hparams['vocab_by_property']:
-            assert hparams['len_k'] == 1
+    hparams['max_len_q'] = data['max_len_q'] 
+    hparams['len_k'] = data['len_k']
+    if not hparams['vocab_by_property']:
+        assert hparams['len_k'] == 1
 
-        assert hparams['model'] in ("contrastive", "generative")
+    assert hparams['model'] in ("contrastive", "generative")
+     #####################
+
 
     if hparams['model'] == 'contrastive' and (not 'contrastive_use_infoNCE' in hparams):
         hparams['contrastive_use_infoNCE'] = True
@@ -88,7 +92,7 @@ def load_hparams(args, data):
         hparams['normalize_dotproduct'] = False
 
     if args.mode == 'resume_train':
-        hparams['max_epochs'] = args.resume_max_epochs
+        hparams['max_epochs'] = int(args.resume_max_epochs)
 
     print('----------hparams----------')
     for k in hparams:
@@ -115,6 +119,8 @@ def run_test(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH, f
 def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
     
     checkpoint_PATH = os.path.join(ckpt_dir_PATH, 'last.ckpt')
+    shutil.copyfile(checkpoint_PATH, os.path.join(ckpt_dir_PATH, 'last_backup.ckpt'))
+
     run_PATH = os.path.join(project_name, run_Id) # also from wandb interface '1ih8yza5'
 
     wandb.restore(checkpoint_PATH, run_path=run_PATH)
@@ -125,7 +131,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         monitor='avg_val_accuracy_by_Query',
         dirpath=ckpt_dir_PATH,
         filename='{epoch:02d}-{step:02d}-{val_loss:.2f}',
-        save_top_k=3,
+        save_top_k=2,
         save_last=True,
         mode='max',
     )
@@ -144,8 +150,8 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         callbacks=[checkpoint_callback, lr_monitor],
     )
     
-    with torch.autograd.detect_anomaly():
-        trainer.fit(trainmodule, datamodule)
+    # with torch.autograd.detect_anomaly():
+    trainer.fit(trainmodule, datamodule)
 
     wandb.save(os.path.join(ckpt_dir_PATH, 'last.ckpt'))
 
@@ -157,7 +163,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         monitor='avg_val_accuracy_by_Query',
         dirpath=ckpt_dir_PATH,
         filename='{epoch:02d}-{step:02d}-{val_loss:.2f}',
-        save_top_k=3,
+        save_top_k=2,
         save_last=True,
         mode='max',
     )
@@ -176,35 +182,40 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         weights_summary='full',
         gradient_clip_val=hparams['gradient_clip_val'],
         callbacks=[checkpoint_callback, lr_monitor],
-        profiler="simple"
+        profiler="simple",
         # num_sanity_val_steps=0,
     )
 
     #fit
-    with torch.autograd.detect_anomaly():
-        trainer.fit(trainmodule, datamodule)
+    # with torch.autograd.detect_anomaly():
+    trainer.fit(trainmodule, datamodule)
 
     wandb.save(os.path.join(ckpt_dir_PATH, 'last.ckpt'))
 
 
-def validate_inputs(args, hparams):
-    assert os.path.exists(args.config_path), 'config_path does not exist'
-    assert os.path.exists(args.data_path), 'data_path does not exist' 
-    assert os.path.exists(args.checkpoint_dir), f'checkpoint_dir {args.checkpoint_dir} does not exist'
-    assert args.project_name, 'missing project name. e.g. ContrastiveLearning-cardgame-Scaling'
+def validate_args(args):
     assert args.mode in ('train', 'resume_train', 'test_full', 'param_summary')
-    if args.mode in ('resume_train', 'test_full'):
+    assert os.path.exists(args.data_path), 'data_path does not exist' 
+    assert args.project_name, 'missing project name. e.g. ContrastiveLearning-cardgame-Scaling'
+
+    if args.mode in ('train', 'param_summary'):
+        assert os.path.exists(args.config_path), 'New config_path does not exist'
+    if args.mode == 'train':
+        assert os.path.exists(args.checkpoint_dir), f'New checkpoint_dir {args.checkpoint_dir} does not exist.'
+    else:
         assert args.runID, 'missing runID, e.g. 1lygiuq3'
-    if args.mode == 'test_full':
-        assert args.ckpt_name, 'missing ckpt_name for testing. e.g. last.ckpt'
+        assert os.path.exists(args.resume_checkpoint_dir), f'Resume checkpoint_dir {args.resume_checkpoint_dir} does not exist.'
+        args.config_path = os.path.join(args.resume_checkpoint_dir, 'config.json')
+        if args.mode == 'test_full':
+            assert args.ckpt_name, 'missing ckpt_name for testing. e.g. last.ckpt'
 
 
 def main(args):
 
+    validate_args(args)
     game_data = load_data(args.data_path)
     validate_data(game_data)
     hparams = load_hparams(args, game_data)
-    validate_inputs(args, hparams)
 
     # approve model summary before training
     if args.approve_before_training:
@@ -274,13 +285,18 @@ def main(args):
 
     # check point path
     if args.mode == 'train':
+        # New training 
         ts = time.time()
         TIMESTAMP = st = datetime.datetime.fromtimestamp(ts).strftime('%Y%m%d-%H%M%S-')
         ckpt_dir_PATH = os.path.join(args.checkpoint_dir, project_name, TIMESTAMP+run_name)
+        print('New Checkpoint Path:\n', ckpt_dir_PATH + '_<New wandb runID>')
+        oldmask = os.umask(000)
+        os.makedirs(ckpt_dir_PATH, 0o777)
+        os.umask(oldmask)
     else:
-        ckpt_dir_PATH = '/'.join(args.config_path.split('/')[:-1])
-    print('Checkpoint Path:\n', ckpt_dir_PATH)
-    os.makedirs(ckpt_dir_PATH, exist_ok=True)
+        # Resume training
+        ckpt_dir_PATH = args.resume_checkpoint_dir
+        print('Resuming From and Saving to Checkpoint Path:\n', ckpt_dir_PATH)
 
     # save config
     with open(os.path.join(ckpt_dir_PATH, 'config.json'), 'w') as f:
@@ -305,16 +321,20 @@ if __name__ == '__main__':
     # parser
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 
-    # settings
-    parser.add_argument('--config_path', help='path to config.json')
+    parser.add_argument('--project_name', type=str)
     parser.add_argument('--data_path', help='path to data json file')
-    parser.add_argument('--checkpoint_dir', help='path to save and load checkpoints.')
     parser.add_argument('--mode', help='train, resume_train, test_full')
+    # new training
+    parser.add_argument('--config_path', default=None, help='path to config.json, must provide if starting new training.')
+    parser.add_argument('--checkpoint_dir', default=None, help='path to save New checkpoints, must provide if starting new training.')
+    # resume / testing
     parser.add_argument('--resume_max_epochs', default=None, help='must provide if resume training or testing')
-    parser.add_argument('--runID', default=None, help='must provide if resume training or testing')
-    parser.add_argument('--project_name', default=None, help='must provide if resume training or testing')
-    parser.add_argument('--ckpt_name', default=None, help='must provide if resume training or testing')
+    parser.add_argument('--resume_checkpoint_dir', default=None, help='path to resume config & checkpoint from and save to.')
+    parser.add_argument('--ckpt_name', default=None, help='must provide if resume training or testing. Such as last.ckpt')
+    parser.add_argument('--runID', default=None, help='wandb RunID must provide if resume training or testing')
+
     parser.add_argument('--gpu', help='gpu id', type=int)
+
     parser.add_argument(
         '--approve_before_training', help='Prompt for user to approve model configuration for training.', action='store_true'
     )  

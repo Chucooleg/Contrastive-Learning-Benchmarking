@@ -2,18 +2,18 @@
     "seed": 42,
 
     "batch_size": 1024,
-    "max_epochs": 10000000000,
-    "val_every_n_epoch": 50,
+    "max_epochs":20000000000,
+    "val_every_n_epoch": 5000,
 
-    "d_model": 512,
+    "d_model": 768,
     "embed_dropout": 0.0,
-    "vec_repr": 512,
+    "vec_repr": 768,
 
     "model": "contrastive",
 
     "d_ff":1024,
-    "N_enc":2,
-    "num_heads":1,
+    "N_enc":4,
+    "num_heads":2,
     "N_enc_key":4,
     "num_heads_key":2,
     
@@ -30,9 +30,9 @@
     "loss_smoothing_const": 0.1,
     "nonlinear_classifier_scale_down_factor": [2,1],
 
-    "contrastive_optimizer": "scheduled_adam",
+    "contrastive_optimizer": "adam",
 
-    "adam_lr": 1e-06,
+    "adam_lr": 1e-05,
     "adam_beta1": 0.9,
     "adam_beta2": 0.999,
     "adam_epsilon": 1e-08,
@@ -53,7 +53,7 @@
     "decay_lr_interval": 100,
     "contrastive_overall_lr_scale": 0.5,
 
-    "gradient_clip_val": 0.5,
+    "gradient_clip_val": 0.0,
 
     "debug":false,
     "extra_monitors":false

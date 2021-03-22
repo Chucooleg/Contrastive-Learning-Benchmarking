@@ -37,27 +37,19 @@ def construct_full_model(hparams):
     )
 
     # # original
-    key_projection = nn.Sequential(
-        nn.Linear(hparams['d_model'],hparams['d_model']),
-        nn.ReLU(),
-        nn.Linear(hparams['d_model'],hparams['vec_repr'])
-    )
-
-    # # with one layer norm d_model, d_ff, vec_repr
     # key_projection = nn.Sequential(
-    #     nn.Linear(hparams['d_model'],hparams['d_ff']),
+    #     nn.Linear(hparams['d_model'],hparams['d_model']),
     #     nn.ReLU(),
-    #     nn.Linear(hparams['d_model'],hparams['vec_repr']),
-    #     LayerNorm(hparams['vec_repr'])
+    #     nn.Linear(hparams['d_model'],hparams['vec_repr'])
     # )
 
     # with one layer norm d_model, d_ff, vec_repr
-    # key_projection = nn.Sequential(
-    #     nn.Linear(hparams['d_model'],hparams['d_ff']),
-    #     nn.ReLU(),
-    #     nn.Linear(hparams['d_ff'],hparams['vec_repr']),
-    #     LayerNorm(hparams['vec_repr'])
-    # )
+    key_projection = nn.Sequential(
+        nn.Linear(hparams['d_model'],hparams['d_ff']),
+        nn.ReLU(),
+        nn.Linear(hparams['d_ff'],hparams['vec_repr']),
+        LayerNorm(hparams['vec_repr'])
+    )
 
     # # with one layer norm d_model, d_model, vec_repr
     # key_projection = nn.Sequential(
@@ -65,14 +57,6 @@ def construct_full_model(hparams):
     #     nn.ReLU(),
     #     nn.Linear(hparams['d_model'],hparams['vec_repr']),
     #     LayerNorm(hparams['vec_repr'])
-    # )
-
-    # # with layer norm and pff 
-    # key_projection = nn.Sequential(
-    #     Positiontwise_FF(hparams['d_model'], hparams['d_ff']),
-    #     LayerNorm(hparams['d_model']),
-    #     nn.Linear(hparams['d_model'],hparams['vec_repr']),
-    #     LayerNorm(hparams['vec_repr']),
     # )
 
     position_encoder = LearnedPositionEncoder(

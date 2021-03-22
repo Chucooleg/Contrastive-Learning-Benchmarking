@@ -57,7 +57,7 @@ class GameDataModule(pl.LightningDataModule):
         train_loader = DataLoader(
             self.train, batch_size=self.batch_size, shuffle=True,
             collate_fn=self.pad_collate_train, 
-            num_workers=8,
+            # num_workers=8, pin_memory=True,
         )
         return train_loader
     
@@ -65,7 +65,7 @@ class GameDataModule(pl.LightningDataModule):
         val_loader = DataLoader(
             self.val, batch_size=self.batch_size, shuffle=False,
             collate_fn=self.pad_collate_val,
-            num_workers=8,
+            # num_workers=8, pin_memory=True,
         )
         return val_loader
 
@@ -73,7 +73,7 @@ class GameDataModule(pl.LightningDataModule):
         test_loader = DataLoader(
             self.test, batch_size=self.batch_size, shuffle=False,
             collate_fn=self.pad_collate_test,
-            num_workers=8,
+            # num_workers=8, pin_memory=True,
         )
         return test_loader
 

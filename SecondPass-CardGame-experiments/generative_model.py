@@ -103,7 +103,7 @@ class DecoderPredictor(nn.Module):
                 key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
                 all_keys[key_idx, :] = key_properties
         else:
-            all_keys = np.arange(self.key_support_size)
+            all_keys = np.arange(self.key_support_size).reshape(-1, 1)
 
         # (key_support_size, num_attributes)
         self.register_buffer(

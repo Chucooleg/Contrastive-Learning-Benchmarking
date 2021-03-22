@@ -3,13 +3,13 @@ from torch.utils.data import Dataset
 import numpy as np
 import random
 
-# from dataraw_sampling import (
-#     sample_one_training_datapoint, 
-#     construct_cardpair_answer_lookup)
-
-from dataraw_sampling_SETShatter import (
+from dataraw_sampling import (
     sample_one_training_datapoint, 
-    construct_cardpair_answer_lookup, derive_shatter_bucket_probs, sample_shattering_bucket, sample_keys_column)
+    construct_cardpair_answer_lookup)
+
+# from dataraw_sampling_SETShatter import (
+#     sample_one_training_datapoint, 
+#     construct_cardpair_answer_lookup, derive_shatter_bucket_probs, sample_shattering_bucket, sample_keys_column)
 
 # Delete later
 import operator as op
@@ -46,59 +46,62 @@ class GameDatasetFromDataPoints(Dataset):
         return gt_binary
 
 
-# class GameDatasetTrainDataset(GameDatasetFromDataPoints):
-#     '''On the fly Simple SET'''
+class GameDatasetTrainDataset(GameDatasetFromDataPoints):
+    '''On the fly Simple SET'''
     
-#     def __init__(self, hparams):
-#         super().__init__(hparams)
-#         self.split = 'train'
+    def __init__(self, hparams):
+        super().__init__(hparams)
+        self.split = 'train'
 
-#         self.key_support_size = hparams['key_support_size']
+        self.cardpair_answer_lookup = construct_cardpair_answer_lookup(
+            self.num_attributes, self.num_attr_vals)
 
-#         self.cardpair_answer_lookup = construct_cardpair_answer_lookup(
-#             self.num_attributes, self.num_attr_vals)
-
-#         self.symbol_vocab_token_lookup = {
-#             '(': hparams['('],
-#             ')': hparams[')'],
-#             'NULL': hparams['NULL'],
-#             'SEP': hparams['SEP'],
-#             'SOS': hparams['SOS'],
-#             'EOS': hparams['EOS'],
-#             'PAD': hparams['PAD'],
-#             'PLH': hparams['PLH'],
-#             '&': hparams['&'],
-#             '|': hparams['|'],
-#         }
+        self.symbol_vocab_token_lookup = {
+            '(': hparams['('],
+            ')': hparams[')'],
+            'NULL': hparams['NULL'],
+            'SEP': hparams['SEP'],
+            'SOS': hparams['SOS'],
+            'EOS': hparams['EOS'],
+            'PAD': hparams['PAD'],
+            'PLH': hparams['PLH'],
+            '&': hparams['&'],
+            '|': hparams['|'],
+        }
         
-#     def __len__(self):
-#         return self.key_support_size
+    def __len__(self):
+        return self.key_support_size
             
-#     def __getitem__(self, idx):
+    def __getitem__(self, idx):
 
-#         # list, list if vocab_by_property else int 
-#         y_vocab_tokens, x_vocab_tokens, _ = sample_one_training_datapoint(
-#             self.key_support_size, self.cardpair_answer_lookup, return_gt=False)
+        # list, list if vocab_by_property else int 
+        y_vocab_tokens, x_vocab_tokens, _ = sample_one_training_datapoint(
+            num_keys = self.key_support_size, 
+            num_attributes = self.num_attributes, 
+            num_attr_vals = self.num_attr_vals, 
+            cardpair_answer_lookup = self.cardpair_answer_lookup, 
+            symbol_vocab_token_lookup = self.symbol_vocab_token_lookup,
+            return_gt=False)
         
-#         if self.debug:
-#             print('query\n', y_vocab_tokens)
-#             print('key\n', x_vocab_tokens)
+        if self.debug:
+            print('query\n', y_vocab_tokens)
+            print('key\n', x_vocab_tokens)
 
-#         if self.model_typ == 'generative':
-#             return (
-#                 torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + x_vocab_tokens + [self.EOS]).long(), # X querykey
-#             )
-#         else:
-#             if self.vocab_by_property:
-#                 return (
-#                     torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
-#                     torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # X key
-#                 )    
-#             else:
-#                 return (
-#                     torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
-#                     torch.tensor(x_vocab_tokens).long(), # X key
-#                 )
+        if self.model_typ == 'generative':
+            return (
+                torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + x_vocab_tokens + [self.EOS]).long(), # X querykey
+            )
+        else:
+            if self.vocab_by_property:
+                return (
+                    torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+                    torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # X key
+                )    
+            else:
+                return (
+                    torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+                    torch.tensor(x_vocab_tokens).long(), # X key
+                )
 
 
 # class GameDatasetTrainDataset(GameDatasetFromDataPoints):
@@ -170,47 +173,47 @@ class GameDatasetFromDataPoints(Dataset):
 #                     torch.tensor(x_vocab_tokens).long(), # X key
 #                 )
 
-class GameDatasetTrainDataset(GameDatasetFromDataPoints):
-    '''On the fly simple shatter. Sample from Bucket, Sample from Column.'''
+# class GameDatasetTrainDataset(GameDatasetFromDataPoints):
+#     '''On the fly simple shatter. Sample from Bucket, Sample from Column.'''
     
-    def __init__(self, hparams):
-        super().__init__(hparams)
-        self.split = 'train'
-        self.setup_buckets()
+#     def __init__(self, hparams):
+#         super().__init__(hparams)
+#         self.split = 'train'
+#         self.setup_buckets()
 
-    def setup_buckets(self):
-        self.bucket_probs = derive_shatter_bucket_probs(self.key_support_size)
+#     def setup_buckets(self):
+#         self.bucket_probs = derive_shatter_bucket_probs(self.key_support_size)
         
-    def __len__(self):
-        return 10 # dummy
+#     def __len__(self):
+#         return 10 # dummy
             
-    def __getitem__(self, idx):
-        '''
-        idx: int.
-        '''
-        y_vocab_tokens, bucket = sample_keys_column(self.num_attributes, self.num_attr_vals, self.bucket_probs)
+#     def __getitem__(self, idx):
+#         '''
+#         idx: int.
+#         '''
+#         y_vocab_tokens, bucket = sample_keys_column(self.num_attributes, self.num_attr_vals, self.bucket_probs)
 
-        # bucket = len(y_vocab_tokens)
-        x_vocab_tokens = [int(np.random.choice(y_vocab_tokens))]
+#         # bucket = len(y_vocab_tokens)
+#         x_vocab_tokens = [int(np.random.choice(y_vocab_tokens))]
         
-        if self.debug:
-            y_vocab_tokens, x_vocab_tokens = self.raw_data[self.split + '_tokens'][idx]
-            print('bucket:', bucket)
-            print('query:',  y_vocab_tokens)
-            print('key:', x_vocab_tokens)
+#         if self.debug:
+#             y_vocab_tokens, x_vocab_tokens = self.raw_data[self.split + '_tokens'][idx]
+#             print('bucket:', bucket)
+#             print('query:',  y_vocab_tokens)
+#             print('key:', x_vocab_tokens)
 
-        if self.model_typ == 'generative':
-            return (
-                # shape(2 + 2*num attributes,)
-                torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + x_vocab_tokens + [self.EOS]).long(), # X querykey
-            )
-        else:
-            return (
-                # shape(2 + 2*num attributes,)
-                torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
-                # shape(1 + num attributes,)
-                torch.tensor(x_vocab_tokens).long(), # X key
-            )
+#         if self.model_typ == 'generative':
+#             return (
+#                 # shape(2 + 2*num attributes,)
+#                 torch.tensor([self.SOS] + y_vocab_tokens + [self.SEP] + x_vocab_tokens + [self.EOS]).long(), # X querykey
+#             )
+#         else:
+#             return (
+#                 # shape(2 + 2*num attributes,)
+#                 torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+#                 # shape(1 + num attributes,)
+#                 torch.tensor(x_vocab_tokens).long(), # X key
+#             )
 
 class GameDatasetValDataset(GameDatasetFromDataPoints):
     

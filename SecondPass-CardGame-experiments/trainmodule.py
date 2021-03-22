@@ -27,9 +27,7 @@ class TrainModule(pl.LightningModule):
         self.hparams = hparams
         self.debug = hparams['debug']
         self.save_hyperparameters()
-
         self.key_support_size = self.hparams['key_support_size']
-
         self.vocab_size = self.hparams['vocab_size']
 
         self.metrics = ThresholdedMetrics(
@@ -43,12 +41,13 @@ class TrainModule(pl.LightningModule):
     ###################################################
     # hack checkpoint dir name to add runID
     def hack_checkpoint_dir_name(self):
-        old_dir_path = self.trainer.callbacks[-1].dirpath
-        new_dir_path = self.trainer.callbacks[-1].dirpath + '_runId_' + self.logger._experiment._run_id
-        self.trainer.callbacks[-1].dirpath = new_dir_path
-        os.mkdir(new_dir_path)
-        os.rename(os.path.join(old_dir_path, 'config.json'), os.path.join(new_dir_path, 'config.json'))
-        os.rmdir(old_dir_path)
+        if self.hparams['mode'] == 'train':
+            old_dir_path = self.trainer.callbacks[-1].dirpath
+            new_dir_path = self.trainer.callbacks[-1].dirpath + '_runId_' + self.logger._experiment._run_id
+            self.trainer.callbacks[-1].dirpath = new_dir_path
+            os.mkdir(new_dir_path)
+            os.rename(os.path.join(old_dir_path, 'config.json'), os.path.join(new_dir_path, 'config.json'))
+            os.rmdir(old_dir_path)
         self.checkpoint_updated = True
 
    ###################################################
