@@ -3,9 +3,23 @@ from torch.utils.data import Dataset
 import numpy as np
 import random
 
+
 from dataraw_sampling import (
     sample_one_training_datapoint, 
     construct_cardpair_answer_lookup)
+
+# from dataraw_sampling_SimpleSET_prop_wildcard import (
+#     sample_one_training_datapoint, 
+#     construct_cardpair_answer_lookup)
+
+# from dataraw_sampling_SimpleSET_prop import (
+#     sample_one_training_datapoint, 
+#     construct_cardpair_answer_lookup)
+
+# from dataraw_sampling_SimpleSET_idx import (
+#     sample_one_training_datapoint, 
+#     construct_cardpair_answer_lookup)
+
 
 # from dataraw_sampling_SETShatter import (
 #     sample_one_training_datapoint, 

@@ -5,9 +5,9 @@
     "max_epochs":20000000000,
     "val_every_n_epoch": 5000,
 
-    "d_model": 768,
+    "d_model": 512,
     "embed_dropout": 0.0,
-    "vec_repr": 768,
+    "vec_repr": 512,
 
     "model": "contrastive",
 
@@ -46,12 +46,12 @@
     "scheduled_adam_epsilon": 1e-09,
     "scheduled_adam_warmup_steps": 8000,
 
-    "additional_lr_decay": false,
+    "additional_lr_decay": true,
     "additional_lr_decay_gamma": 0.9,
     "decay_lr_starts": 8000,
     "decay_lr_stops": 36000,
-    "decay_lr_interval": 100,
-    "contrastive_overall_lr_scale": 0.5,
+    "decay_lr_interval": 2000,
+    "contrastive_overall_lr_scale": 0.025,
 
     "gradient_clip_val": 0.0,
 
