@@ -3,7 +3,7 @@
 
     "batch_size": 1024,
     "max_epochs":20000000000,
-    "val_every_n_epoch": 5000,
+    "val_every_n_epoch": 100,
 
     "d_model": 512,
     "embed_dropout": 0.0,
@@ -44,14 +44,14 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-09,
-    "scheduled_adam_warmup_steps": 8000,
+    "scheduled_adam_warmup_steps": 50000,
 
     "additional_lr_decay": true,
     "additional_lr_decay_gamma": 0.9,
-    "decay_lr_starts": 8000,
-    "decay_lr_stops": 36000,
+    "decay_lr_starts": 50000,
+    "decay_lr_stops": 80000,
     "decay_lr_interval": 2000,
-    "contrastive_overall_lr_scale": 0.025,
+    "contrastive_overall_lr_scale": 1.0,
 
     "gradient_clip_val": 0.0,
 

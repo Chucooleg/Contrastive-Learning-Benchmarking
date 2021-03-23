@@ -1,8 +1,7 @@
-
-
 '''
-dataraw_sampling_SimpleSET_idx
+dataraw_sampling_SimpleSET_prop
 '''
+
 
 from collections import defaultdict, Counter
 import itertools
@@ -17,8 +16,32 @@ import numpy as np
 import time
 
 ####################################################################################
+
 def decode_key_to_vocab_token(num_attributes, num_attr_vals, key_idx):
-    raise NotImplmentedError
+    '''
+    convert key_idx into vocab tokens for training
+    '''
+    # per attribute e.g. for 4 attr, 16 attr vals (10, 15, 5, 15)
+    key_properties = decode_key_idx(num_attributes, num_attr_vals, key_idx)
+    return decode_key_properties_to_vocab_token(num_attributes, num_attr_vals, key_properties)
+
+def encode_vocab_token_to_key(num_attributes, num_attr_vals, vocab_tokens):
+    '''
+    reverse decode_key_to_vocab_token()
+    '''
+    key_properties = encode_vocab_token_to_key_properties(num_attributes, num_attr_vals, vocab_tokens)
+    key_idx = encode_key_idx(num_attributes, num_attr_vals, key_properties)
+    return key_idx
+
+def decode_key_properties_to_vocab_token(num_attributes, num_attr_vals, key_properties):
+    '''
+    key_properties: np array. e.g. for 4 attr, 16 attr vals (10, 15, 5, 15)
+    '''
+    # (0*16, 1*16, 2*16, 3*16)
+    key_range_indices = np.arange(num_attributes) * num_attr_vals
+    # according to vocab e.g. for 4 attr, 16 attr vals (0*16+10=10, 1*16+15=31, 2*16+5=37, 3*16+15=63)
+    vocab_tokens = key_range_indices + key_properties
+    return vocab_tokens.tolist()
 
 def encode_vocab_token_to_key_properties(num_attributes, num_attr_vals, vocab_tokens):
     '''
@@ -112,18 +135,19 @@ def sample_one_training_datapoint(num_keys, num_attributes, num_attr_vals, cardp
     card1_idx = np.random.choice(num_keys)
     card2_idx = np.random.choice(num_keys)
 
-    q_vocab_tokens = [card1_idx, card2_idx]
+    q_vocab_tokens = decode_key_to_vocab_token(num_attributes, num_attr_vals, card1_idx) + [symbol_vocab_token_lookup['&']] + decode_key_to_vocab_token(num_attributes, num_attr_vals, card2_idx)
     
     # int
-    k_vocab_tokens = cardpair_answer_lookup[(min(card1_idx, card2_idx), max(card1_idx, card2_idx))]
+    cardk_idx = cardpair_answer_lookup[(min(card1_idx, card2_idx), max(card1_idx, card2_idx))]
+    k_vocab_tokens = list(decode_key_to_vocab_token(num_attributes, num_attr_vals, cardk_idx))
 
     if return_gt:
-        gt_ks_idx = [k_vocab_tokens]
+        gt_ks_idx = [cardk_idx]
     else:
         gt_ks_idx = None
 
-    # list, list, list
-    return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
+    # list, list
+    return q_vocab_tokens, k_vocab_tokens, gt_ks_idx
 
 
 def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
@@ -135,12 +159,8 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     tokens = []
     gt_idxs = []
 
-
-    start_time = time.time()
     cardpair_answer_lookup = construct_cardpair_answer_lookup(num_attributes, num_attr_vals)
-    print('Time to build cardpair_answer_lookup:', time.time()-start_time, 'seconds')
-
-    base_vocab_size =  num_keys
+    base_vocab_size =  num_attr_vals*num_attributes
     symbol_vocab_token_lookup = {
         '(': base_vocab_size,
         ')': base_vocab_size + 1,
@@ -156,10 +176,18 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     
     max_len_q = 2
     for i in tqdm(range(N)):
-        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_keys, num_attributes, num_attr_vals, cardpair_answer_lookup, symbol_vocab_token_lookup, return_gt=True)
+        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(
+            num_keys, 
+            num_attributes, 
+            num_attr_vals, 
+            cardpair_answer_lookup, 
+            symbol_vocab_token_lookup, 
+            return_gt=True)
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)
+
+        print((q_vocab_tokens, k_vocab_tokens))
         
         # stats
         max_len_q = max(max_len_q, len(q_vocab_tokens))
@@ -173,7 +201,7 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
 
         'query_length_multiplier': None,
         'max_len_q': max_len_q,
-        'len_k': 1,
+        'len_k': num_attributes,
         
         #################################        
         'train_gt_idxs': gt_idxs[:N_train],
@@ -188,7 +216,7 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
 
         'vocab_size': base_vocab_size + len(symbol_vocab_token_lookup),
         'symbol_vocab_token_lookup': symbol_vocab_token_lookup,
-        'vocab_by_property': False,
+        'vocab_by_property': True,
 
         #################################
     }
