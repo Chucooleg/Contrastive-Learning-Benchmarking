@@ -95,6 +95,8 @@ class Encoder(nn.Module):
         # shape(b, inp_len, d_model)
         return encoder_out
 
+# torch.isinf(inp_embedding).any() or torch.isnan(inp_embedding).any()
+
 ########################################################
 class EncoderLayer(nn.Module):
     '''
@@ -127,6 +129,9 @@ class EncoderLayer(nn.Module):
             import pdb; pdb.set_trace()
         
         return z_l, self_attn_wts
+
+# torch.isinf(z_lm1).any() or torch.isnan(z_lm1).any()
+
 
 ########################################################
 

@@ -65,6 +65,9 @@ def construct_full_model(hparams):
     
     return model
 
+# torch.isinf(self.inp_querykey_layer.scaled_embed.embedding.weight).any() or torch.isnan(self.inp_querykey_layer.scaled_embed.embedding.weight).any()
+# torch.isinf(self.inp_querykey_layer.position_encoder.pos_embedding.weight).any() or torch.isnan(self.inp_querykey_layer.scaled_embed.embedding.weight).any()
+
 
 class DecoderPredictor(nn.Module):
 
@@ -196,6 +199,8 @@ class DecoderPredictor(nn.Module):
         decoder_out = self.querykey_decoder(inp_embed, inp_pads)
         assert decoder_out.shape == (b, inp_len, self.d_model)
         return decoder_out
+
+# torch.isinf(inp_embed).any() or torch.isnan(inp_embed).any()
 
 
 class Classifier(nn.Module):
