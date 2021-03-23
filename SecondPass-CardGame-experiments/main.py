@@ -3,9 +3,11 @@ import sys
 import json
 import time
 import datetime
+import pathlib
 import pprint
 import numpy as np
 import shutil
+import tempfile
 
 import torch
 from torch.utils.data import DataLoader
@@ -13,7 +15,6 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 import wandb
-wandb.login()
 from pytorch_lightning.loggers import WandbLogger
 
 from datamodule import GameDataModule
@@ -22,12 +23,34 @@ from trainmodule import ContrastiveTrainModule, GenerativeTrainModule
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 
-# import azureml.core
+def _get_aml_run_context():
+    import azureml.core
+    return azureml.core.Run.get_context()
 
-# # set the wandb API key to an environment variable and log in
-# run = azureml.core.Run.get_context()
-# os.environ['WANDB_API_KEY'] = run.get_secret(name='WANDBAPIKEY')
-# wandb.login()
+
+def wandb_login(aml):
+    if aml:
+        run = _get_aml_run_context()
+        os.environ['WANDB_API_KEY'] = run.get_secret(name='WANDBAPIKEY')
+    wandb.login()
+
+
+def load_aml_dataset(dataset_name):
+    import azureml.core
+    run = _get_aml_run_context()
+    ws = run.experiment.workspace
+    dataset = azureml.core.Dataset.get_by_name(ws, name=args.dataset_name)
+    mounted_path = tempfile.mkdtemp()
+    print(f'will mount dataset to {mounted_path}')
+
+    # mount dataset onto the mounted_path of a Linux-based compute
+    mount_context = dataset.mount(mounted_path)
+
+    mount_context.start()
+    data_paths = list(pathlib.Path(mounted_path).glob('*.json'))
+
+    assert len(data_paths) == 1, data_paths
+    return data_paths[0].absolute()
 
 
 def load_data(data_path):
@@ -55,8 +78,15 @@ def validate_data(data):
             breakpoint()
 
 
+def get_full_config_path(args):
+    if args.aml:
+        return pathlib.Path(__file__).parent / args.config_path
+    else:
+        return args.config_path
+
+
 def load_hparams(args, data):
-    with open(args.config_path, 'r') as f:
+    with open(get_full_config_path(args), 'r') as f:
         hparams = json.load(f)
 
     hparams['mode'] = args.mode
@@ -175,6 +205,23 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
     # monitors
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
+    # https://discuss.pytorch.org/t/i-have-3-gpu-why-torch-cuda-device-count-only-return-1/7245/4
+    import torch
+    import sys
+    print('__Python VERSION:', sys.version)
+    print('__pyTorch VERSION:', torch.__version__)
+    print('__CUDA VERSION')
+    from subprocess import call
+    # call(["nvcc", "--version"]) does not work
+    print('__CUDNN VERSION:', torch.backends.cudnn.version())
+    print('__Number CUDA Devices:', torch.cuda.device_count())
+    print('__Devices')
+    call(["nvidia-smi", "--format=csv", "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free"])
+    print('Active CUDA Device: GPU', torch.cuda.current_device())
+
+    print ('Available devices ', torch.cuda.device_count())
+    print ('Current cuda device ', torch.cuda.current_device())
+
     # trainer
     trainer = pl.Trainer(
         gpus=[args.gpu], 
@@ -199,14 +246,22 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
 
 
 def validate_args(args):
-    assert args.mode in ('train', 'resume_train', 'test', 'test_marginal', 'param_summary')
-    assert os.path.exists(args.data_path), 'data_path does not exist' 
+    if args.aml:
+        assert args.data_path is None
+        assert args.dataset_name is not None
+    else:
+        assert os.path.exists(args.data_path), 'data_path does not exist'
+        assert args.dataset_name is None
     assert args.project_name, 'missing project name. e.g. ContrastiveLearning-cardgame-Scaling'
 
     if args.mode in ('train', 'param_summary'):
-        assert os.path.exists(args.config_path), 'New config_path does not exist'
+        config_path = get_full_config_path(args)
+        assert os.path.exists(config_path), 'New config_path does not exist'
     if args.mode == 'train':
-        assert os.path.exists(args.checkpoint_dir), f'New checkpoint_dir {args.checkpoint_dir} does not exist.'
+        if args.aml:
+            assert args.checkpoint_dir is None, 'AML expects checkpoints to be written to ./outputs'
+        else:
+            assert os.path.exists(args.checkpoint_dir), f'New checkpoint_dir {args.checkpoint_dir} does not exist.'
     else:
         assert args.runID, 'missing runID, e.g. 1lygiuq3'
         assert os.path.exists(args.resume_checkpoint_dir), f'Resume checkpoint_dir {args.resume_checkpoint_dir} does not exist.'
@@ -216,9 +271,12 @@ def validate_args(args):
 
 
 def main(args):
-
     validate_args(args)
-    game_data = load_data(args.data_path)
+    if args.aml:
+        data_path = load_aml_dataset(args.dataset_name)
+    else:
+        data_path = args.data_path
+    game_data = load_data(data_path)
     validate_data(game_data)
     hparams = load_hparams(args, game_data)
 
@@ -287,17 +345,24 @@ def main(args):
         if not val.lower() in ('yes', 'y'):
             sys.exit(1)
 
+    if args.aml:
+        checkpoint_dir = './outputs'
+    else:
+        checkpoint_dir = args.checkpoint_dir
+
     # check point path
     if args.mode == 'train':
         # New training 
         ts = time.time()
         TIMESTAMP = st = datetime.datetime.fromtimestamp(ts).strftime('%Y%m%d-%H%M%S-')
-        ckpt_dir_PATH = os.path.join(args.checkpoint_dir, project_name, TIMESTAMP+run_name)
+        ckpt_dir_PATH = os.path.join(checkpoint_dir, project_name, TIMESTAMP+run_name)
         print('New Checkpoint Path:\n', ckpt_dir_PATH + '_<New wandb runID>')
         oldmask = os.umask(000)
         os.makedirs(ckpt_dir_PATH, 0o777)
         os.umask(oldmask)
     else:
+        if args.aml:
+            raise NotImplementedError('not sure what to do here')
         # Resume training
         ckpt_dir_PATH = args.resume_checkpoint_dir
         print('Resuming From and Saving to Checkpoint Path:\n', ckpt_dir_PATH)
@@ -328,8 +393,10 @@ if __name__ == '__main__':
     parser.add_argument('--project_name', type=str)
     parser.add_argument('--data_path', help='path to data json file')
     parser.add_argument('--mode', help='train, resume_train, test')
+    parser.add_argument('--dataset_name', help='name of dataset')
     # new training
-    parser.add_argument('--config_path', default=None, help='path to config.json, must provide if starting new training.')
+    parser.add_argument('--config_path', default=None, help='path to config.json, must provide if starting new training.  '
+                        'If running in AML, path should be relative to this file.')
     parser.add_argument('--checkpoint_dir', default=None, help='path to save New checkpoints, must provide if starting new training.')
     # resume / testing
     parser.add_argument('--resume_max_epochs', default=None, help='must provide if resume training or testing')
@@ -341,9 +408,12 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '--approve_before_training', help='Prompt for user to approve model configuration for training.', action='store_true'
-    )  
+    )
+    parser.add_argument('--aml', help='add this flag if running via AML', action='store_true')
 
     # args and init
     args = parser.parse_args()
+
+    wandb_login(args.aml)
 
     main(args)
