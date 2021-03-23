@@ -26,8 +26,6 @@ def construct_full_model(hparams):
     query_encoder = construct_transformer_encoder(hparams)
     key_encoder = construct_transformer_encoder(hparams, key_bool=True) if hparams['vocab_by_property'] else None
     
-    construct_transformer_encoder(hparams)
-    
     # original 
     # query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
 
