@@ -12,8 +12,8 @@
     "model": "generative",
 
     "d_ff":1024,
-    "N_enc": 32,
-    "num_heads": 32,
+    "N_enc": 8,
+    "num_heads": 8,
     "N_enc_key":4,
     "num_heads_key":2,
     
@@ -44,11 +44,11 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-06,
-    "scheduled_adam_warmup_steps": 20000,
+    "scheduled_adam_warmup_steps": 8000,
 
     "additional_lr_decay": true,
     "additional_lr_decay_gamma": 0.9,
-    "decay_lr_starts": 20000,
+    "decay_lr_starts": 8000,
     "decay_lr_stops": 80000,
     "decay_lr_interval": 1000,
     "contrastive_overall_lr_scale": 0.01,
