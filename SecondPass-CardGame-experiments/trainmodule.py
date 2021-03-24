@@ -81,10 +81,10 @@ class TrainModule(pl.LightningModule):
         self.log_metrics(epoch_metrics)
         return epoch_metrics         
     
+
     def test_epoch_end(self, outputs):        
         averaged_metrics = self.aggregate_metrics_at_epoch_end(outputs)
-        return averaged_metrics   
-
+        print(averaged_metrics)
 
 class GenerativeTrainModule(TrainModule):
 
@@ -103,6 +103,7 @@ class GenerativeTrainModule(TrainModule):
         self.EOS = self.hparams['EOS']
         self.PAD = self.hparams['PAD']
         self.SEP = self.hparams['SEP']
+        self.val_every_n_epoch = self.hparams['val_every_n_epoch']
 
     ###################################################
 
@@ -228,17 +229,29 @@ class GenerativeTrainModule(TrainModule):
     def training_step(self, batch, batch_nb):
 
         # (b, inp_len), (b, support size)
-        X_querykey = batch
-        gt_binary = None
+        X_querykey, gt_binary = batch
+        # gt_binary = None
 
         # scalar
-        _, loss, _, metrics = self(
+        _, loss, _, tr_metrics1 = self(
             X_querykey,
             gt_binary, 
             val_bool=False, 
             debug=self.debug
         )
+
+        with torch.no_grad():
+            if (self.current_epoch <= 50) or  ((self.current_epoch+1) % self.val_every_n_epoch == 0):
+                _, _, _, tr_metrics2 = self(
+                    X_querykey,
+                    gt_binary, 
+                    val_bool=True, 
+                    debug=self.debug
+                )
+            else:
+                tr_metrics2 = {}
         
+
         if self.debug:
             print('-----------------------------')
             print('train step')
@@ -249,8 +262,16 @@ class GenerativeTrainModule(TrainModule):
         lr = self.optimizers().param_groups[0]['lr']
 
         # log
-        step_metrics = {**{'train_loss': loss, 'learning_rate': lr}, **metrics}
+        step_metrics = {
+            **{'train_loss': loss, 'learning_rate': lr}, 
+            **{'train_'+m:tr_metrics1[m] for m in tr_metrics1}, 
+            **{'train_'+m:tr_metrics2[m] for m in tr_metrics2}
+            }
         self.log_metrics(step_metrics)
+
+        # if self.current_epoch % self.val_every_n_epoch == 0:
+        #     breakpoint()
+
         return loss
 
     def validation_step(self, batch, batch_nb):
@@ -313,7 +334,6 @@ class GenerativeTrainModule(TrainModule):
 
     def validation_epoch_end(self, outputs):
         averaged_metrics = self.aggregate_metrics_at_epoch_end(outputs)
-        return averaged_metrics
 
     ###################################################
 
@@ -345,7 +365,8 @@ class GenerativeTrainModule(TrainModule):
             decay_lr_starts=self.hparams["decay_lr_starts"], 
             decay_lr_stops=self.hparams['decay_lr_stops'],
             decay_lr_interval=self.hparams["decay_lr_interval"], 
-            decay_gamma=self.hparams["additional_lr_decay_gamma"], 
+            decay_gamma=self.hparams["additional_lr_decay_gamma"],
+            overall_lr_scale=self.hparams['generative_overall_lr_scale']
         )
         return opt
 
@@ -400,11 +421,15 @@ class ContrastiveTrainModule(TrainModule):
     def training_step(self, batch, batch_nb):
 
         # (b, len_q), (b, len_k), (b, support size)
-        X_query, X_key = batch
-        gt_binary = None
+        X_query, X_key, gt_binary = batch
+        # gt_binary = None
+
         # scalar
         _, loss, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
-        
+
+        with torch.no_grad():
+            _, _, _, tr_metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
+                
         if self.debug:
             print('-----------------------------')
             print('train step')
@@ -418,6 +443,7 @@ class ContrastiveTrainModule(TrainModule):
 
         # log
         step_metrics = {'train_loss': loss, 'learning_rate': lr, 'global_step':global_step}
+        step_metrics = {**step_metrics, **{'train_'+m:tr_metrics[m] for m in tr_metrics}}
         self.log_metrics(step_metrics)
         return loss
 
@@ -466,7 +492,6 @@ class ContrastiveTrainModule(TrainModule):
 
     def validation_epoch_end(self, outputs):
         averaged_metrics = self.aggregate_metrics_at_epoch_end(outputs)
-        return averaged_metrics
 
     ###################################################
     
@@ -485,7 +510,7 @@ class ContrastiveTrainModule(TrainModule):
         #     decay_gamma=self.hparams["additional_lr_decay_gamma"], 
         # )
 
-        assert self.hparams['contrastive_optimizer'] in ('sgd', 'scheduled_adam', 'adam')
+        assert self.hparams['contrastive_optimizer'] in ('sgd', 'scheduled_adam', 'adam', 'cosine_annealing')
 
         if self.hparams['contrastive_optimizer'] == 'scheduled_adam':
 
@@ -505,6 +530,8 @@ class ContrastiveTrainModule(TrainModule):
                 decay_gamma=self.hparams["additional_lr_decay_gamma"], 
                 overall_lr_scale=self.hparams['contrastive_overall_lr_scale'],
             )
+            return opt
+
         elif self.hparams['contrastive_optimizer'] == 'sgd':
             
             opt = torch.optim.SGD(
@@ -512,7 +539,9 @@ class ContrastiveTrainModule(TrainModule):
                     lr=self.hparams['sgd_lr'],
                     momentum=self.hparams['sgd_momentum']
                 )
-        else:
+            return opt
+
+        elif self.hparams['contrastive_optimizer'] == 'adam':
 
             opt = torch.optim.Adam(
                 params=self.model.parameters(),
@@ -522,7 +551,23 @@ class ContrastiveTrainModule(TrainModule):
                 eps=self.hparams['adam_epsilon'],
                 weight_decay=self.hparams['adam_weight_decay']
             )
+            return opt
 
-        return opt
+        else: # cosine_annealing
+
+            opt = torch.optim.Adam(
+                params=self.model.parameters(),
+                lr=self.hparams['adam_lr'],
+                betas=(
+                    self.hparams['adam_beta1'], self.hparams['adam_beta2']),
+                eps=self.hparams['adam_epsilon'],
+                weight_decay=self.hparams['adam_weight_decay']
+            )
+            
+            # https://pytorch.org/docs/stable/optim.html#torch.optim.lr_scheduler.CosineAnnealingLR
+            # https://discuss.pytorch.org/t/how-to-implement-torch-optim-lr-scheduler-cosineannealinglr/28797/6
+            sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=self.hparams['cosine_annealing_T_max'])
+
+            return [opt], [sched]
 
 

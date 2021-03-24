@@ -246,8 +246,10 @@ def main(args):
             Opt_str = 'adam{}'.format(hparams['adam_lr'])
         elif hparams['contrastive_optimizer'] == 'sgd':
             Opt_str = 'sgd{}'.format(hparams['sgd_lr'])
-        else:
+        elif hparams['contrastive_optimizer'] == 'scheduled_adam':
             Opt_str = 'scheduledAdamW{}'.format(hparams['scheduled_adam_warmup_steps'])
+        else:
+            Opt_str = 'cosineAnnealingTmax{}'.format(hparams['cosine_annealing_T_max'])
         run_name = 'Con;Vec{};L{}H{}Lk{}Hk{};{};{}Kparams'.format(
             hparams['vec_repr'],
             hparams['N_enc'],
@@ -256,7 +258,7 @@ def main(args):
             hparams['num_heads_key'],
             Opt_str,
             round(max(model_summary.param_nums)/1000,2)
-        )
+            )
     else:
         Opt_str = 'scheduledAdamW{}'.format(hparams['scheduled_adam_warmup_steps'])
         run_name = 'Gen;L{}H{};{};{}Kparams'.format(

@@ -61,82 +61,8 @@ def construct_transformer_decoder(hparams):
     return decoder
 
 ########################################################
-# class Encoder(nn.Module):
-#     '''Post LayerNorm'''
-
-#     def __init__(self, encoder_layer, N_layers, d_model, mask_forward):
-#         super().__init__()
-#         self.encoder_layers = nn.ModuleList(
-#             [copy.deepcopy(encoder_layer) for _ in range(N_layers)])
-#         self.N_layers = N_layers
-#         self.d_model = d_model
-#         self.mask_forward = mask_forward
-
-#     def forward(self, inp_embedding, inp_pads):
-#         """
-#         Args
-#         inp_embedding: Input embeddings. Already position encoded.
-#                         shape (batch_size=b, inp_len, d_model)
-#         inp_pads: Input pads. shape (batch_size=b, inp_len). 1s are padded.
-#         Returns
-#         encoder_out: output from encoder stack. 
-#                     shape (batch_size=b, inp_len, d_model)
-#         """
-#         # Make self-attn mask
-#         self_attn_mask = make_attn_mask(inp_pads, inp_pads, mask_forward=self.mask_forward)
-
-#         # Loop through layers in stack
-#         last_z = inp_embedding
-#         for l, encoder_layer in enumerate(self.encoder_layers):
-#             # shape (b, inp_len, d_model)
-#             last_z, _ = encoder_layer(last_z, self_attn_mask)
-
-#         # shape(b, inp_len, d_model)
-#         encoder_out = last_z
-#         # shape(b, inp_len, d_model)
-#         return encoder_out
-
-# # torch.isinf(inp_embedding).any() or torch.isnan(inp_embedding).any()
-
-# ########################################################
-# class EncoderLayer(nn.Module):
-#     '''
-#     single layer encoder, post LayerNorm
-#     '''
-#     def __init__(self, poswise_ff, self_attn, layer_norm,
-#                 heads_dropout, pff_dropout):
-#         super().__init__()
-#         self.poswise_ff = poswise_ff
-#         self.self_attn = self_attn
-#         self.layer_norms = nn.ModuleList([copy.deepcopy(layer_norm) for _ in range(2)])
-#         self.heads_dropout = nn.Dropout(heads_dropout)
-#         self.pff_dropout = nn.Dropout(pff_dropout)
-
-#     def forward(self, z_lm1, self_attn_mask):
-#         '''
-#         z_lm1 : last encoder layer activations. shape (batch_size=b, inp_len, d_model)
-#         '''
-#         # (b, inp_len, d_model)
-#         z_lm1_h, self_attn_wts = self.self_attn(z_lm1, z_lm1, self_attn_mask)
-#         # (b, inp_len, d_model)
-#         z_lm1_h_norm = self.layer_norms[0](z_lm1 + self.heads_dropout(z_lm1_h))
-#         # (b, inp_len, d_model)
-#         z_lm1_ff = self.poswise_ff(z_lm1_h_norm)
-#         # (b, inp_len, d_model)
-#         z_l = self.layer_norms[1](z_lm1_h_norm + self.pff_dropout(z_lm1_ff))
-        
-#         if torch.isinf(z_l).any() or torch.isnan(z_l).any():
-#             print("z_l is nan or inf")
-#             import pdb; pdb.set_trace()
-        
-#         return z_l, self_attn_wts
-
-# # torch.isinf(z_lm1).any() or torch.isnan(z_lm1).any()
-
-
-########################################################
 class Encoder(nn.Module):
-    '''Pre LayerNorm'''
+    '''Post LayerNorm'''
 
     def __init__(self, encoder_layer, N_layers, d_model, mask_forward):
         super().__init__()
@@ -145,7 +71,6 @@ class Encoder(nn.Module):
         self.N_layers = N_layers
         self.d_model = d_model
         self.mask_forward = mask_forward
-        self.norm = LayerNorm(d_model)
 
     def forward(self, inp_embedding, inp_pads):
         """
@@ -167,7 +92,7 @@ class Encoder(nn.Module):
             last_z, _ = encoder_layer(last_z, self_attn_mask)
 
         # shape(b, inp_len, d_model)
-        encoder_out = self.norm(last_z)
+        encoder_out = last_z
         # shape(b, inp_len, d_model)
         return encoder_out
 
@@ -176,8 +101,7 @@ class Encoder(nn.Module):
 ########################################################
 class EncoderLayer(nn.Module):
     '''
-    single layer encoder, 
-    Pre LayerNorm
+    single layer encoder, post LayerNorm
     '''
     def __init__(self, poswise_ff, self_attn, layer_norm,
                 heads_dropout, pff_dropout):
@@ -192,35 +116,102 @@ class EncoderLayer(nn.Module):
         '''
         z_lm1 : last encoder layer activations. shape (batch_size=b, inp_len, d_model)
         '''
-        # 1. Norm
-        # 2. Attn
-        # 3. dropout Attn
-        # 4. Sum with prenorm
-        # 5. Norm
-        # 6. pff
-        # 7. pff dropout
-        # 8. Sum with prenorm
-
-        # ref: x + self.dropout(sublayer(self.norm(x)))
-
-        # step 1. Norm,  (b, inp_len, d_model)
-        z_lm1_norm = self.layer_norms[0](z_lm1)
-        # step 2. Attn (b, inp_len, d_model)
-        z_lm1_h, self_attn_wts = self.self_attn(z_lm1_norm, z_lm1_norm, self_attn_mask)
-        # step 3 Attn dropout, 4 sum with prenorm (b, inp_len, d_model)
-        z_lm1_h_sum = z_lm1 + self.heads_dropout(z_lm1_h)
-        # step 5 Norm (b, inp_len, d_model)
-        z_lm1_h_norm = self.layer_norms[1](z_lm1_h_sum)
-        # step 6 pff, 7 pff dropout, 8 Sum with prenorm (b, inp_len, d_model)
-        z_l = z_lm1_h_sum + self.pff_dropout(self.poswise_ff(z_lm1_h_norm))
+        # (b, inp_len, d_model)
+        z_lm1_h, self_attn_wts = self.self_attn(z_lm1, z_lm1, self_attn_mask)
+        # (b, inp_len, d_model)
+        z_lm1_h_norm = self.layer_norms[0](z_lm1 + self.heads_dropout(z_lm1_h))
+        # (b, inp_len, d_model)
+        z_lm1_ff = self.poswise_ff(z_lm1_h_norm)
+        # (b, inp_len, d_model)
+        z_l = self.layer_norms[1](z_lm1_h_norm + self.pff_dropout(z_lm1_ff))
         
         if torch.isinf(z_l).any() or torch.isnan(z_l).any():
-            print("z_l is nan or inf")
-            import pdb; pdb.set_trace()
+            breakpoint()
         
         return z_l, self_attn_wts
 
 # torch.isinf(z_lm1).any() or torch.isnan(z_lm1).any()
+
+
+########################################################
+# class Encoder(nn.Module):
+#     '''Pre LayerNorm'''
+
+#     def __init__(self, encoder_layer, N_layers, d_model, mask_forward):
+#         super().__init__()
+#         self.encoder_layers = nn.ModuleList(
+#             [copy.deepcopy(encoder_layer) for _ in range(N_layers)])
+#         self.N_layers = N_layers
+#         self.d_model = d_model
+#         self.mask_forward = mask_forward
+#         self.norm = LayerNorm(d_model)
+
+#     def forward(self, inp_embedding, inp_pads):
+#         """
+#         Args
+#         inp_embedding: Input embeddings. Already position encoded.
+#                         shape (batch_size=b, inp_len, d_model)
+#         inp_pads: Input pads. shape (batch_size=b, inp_len). 1s are padded.
+#         Returns
+#         encoder_out: output from encoder stack. 
+#                     shape (batch_size=b, inp_len, d_model)
+#         """
+#         # Make self-attn mask
+#         self_attn_mask = make_attn_mask(inp_pads, inp_pads, mask_forward=self.mask_forward)
+
+#         # Loop through layers in stack
+#         last_z = inp_embedding
+#         for l, encoder_layer in enumerate(self.encoder_layers):
+#             # shape (b, inp_len, d_model)
+#             last_z, _ = encoder_layer(last_z, self_attn_mask)
+
+#         # shape(b, inp_len, d_model)
+#         encoder_out = self.norm(last_z)
+#         # shape(b, inp_len, d_model)
+#         return encoder_out
+
+# # torch.isinf(inp_embedding).any() or torch.isnan(inp_embedding).any()
+
+# ########################################################
+# class EncoderLayer(nn.Module):
+#     '''
+#     single layer encoder, 
+#     Pre LayerNorm
+#     '''
+#     def __init__(self, poswise_ff, self_attn, layer_norm,
+#                 heads_dropout, pff_dropout):
+#         super().__init__()
+#         self.poswise_ff = poswise_ff
+#         self.self_attn = self_attn
+#         self.layer_norms = nn.ModuleList([copy.deepcopy(layer_norm) for _ in range(2)])
+#         self.heads_dropout = nn.Dropout(heads_dropout)
+#         self.pff_dropout = nn.Dropout(pff_dropout)
+
+#     def forward(self, z_lm1, self_attn_mask):
+#         '''
+#         z_lm1 : last encoder layer activations. shape (batch_size=b, inp_len, d_model)
+#         '''
+
+#         # ref: x + self.dropout(sublayer(self.norm(x)))
+
+#         # step 1. Norm,  (b, inp_len, d_model)
+#         z_lm1_norm = self.layer_norms[0](z_lm1)
+#         # step 2. Attn (b, inp_len, d_model)
+#         z_lm1_h, self_attn_wts = self.self_attn(z_lm1_norm, z_lm1_norm, self_attn_mask)
+#         # step 3 Attn dropout, 4 sum with prenorm (b, inp_len, d_model)
+#         z_lm1_h_sum = z_lm1 + self.heads_dropout(z_lm1_h)
+#         # step 5 Norm (b, inp_len, d_model)
+#         z_lm1_h_norm = self.layer_norms[1](z_lm1_h_sum)
+#         # step 6 pff, 7 pff dropout, 8 Sum with prenorm (b, inp_len, d_model)
+#         z_l = z_lm1_h_sum + self.pff_dropout(self.poswise_ff(z_lm1_h_norm))
+        
+#         if torch.isinf(z_l).any() or torch.isnan(z_l).any():
+#             print("z_l is nan or inf")
+#             import pdb; pdb.set_trace()
+        
+#         return z_l, self_attn_wts
+
+# # torch.isinf(z_lm1).any() or torch.isnan(z_lm1).any()
 
 
 ########################################################
@@ -466,8 +457,12 @@ class ScaledEmbedding(nn.Module):
         # embedded = F.normalize(embedded, p=1, dim=-1) 
         # embedded = self.standardize(embedded)
         # embedded = self.minmax_normalize(embedded)
-        if torch.max(embedded) > 2000.:
-            import pdb; pdb.set_trace()
+
+        # ??????????
+        # why are there NaNs? 
+        # if torch.max(embedded) > 2000.:
+        #     import pdb; pdb.set_trace()
+        
         return embedded
 
     # def standardize(self, embedding):
