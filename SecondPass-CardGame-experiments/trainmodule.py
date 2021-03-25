@@ -87,6 +87,7 @@ class TrainModule(pl.LightningModule):
         averaged_metrics = self.aggregate_metrics_at_epoch_end(outputs)
         print(averaged_metrics)
 
+
 class GenerativeTrainModule(TrainModule):
 
     def __init__(self, hparams, gt_distributions={}):
@@ -105,6 +106,11 @@ class GenerativeTrainModule(TrainModule):
         self.PAD = self.hparams['PAD']
         self.SEP = self.hparams['SEP']
         
+        self.debug_metrics = GenerativeDebugMetrics(
+            num_attributes=self.hparams['num_attributes'], 
+            num_attr_vals=self.hparams['num_attr_vals'], 
+            key_support_size=self.hparams['key_support_size'])
+
     ###################################################
 
     # def score_sequences(self, X_query_allkeys, query_allkey_logits):
@@ -200,28 +206,55 @@ class GenerativeTrainModule(TrainModule):
             assert querykey_logits.shape == (b, len_qk, self.vocab_size) 
             assert log_pxy is None
 
-        if val_bool:
-            loss = None
-
-            # dict
-            log_scores = log_pxy
-
-            metrics = self.metrics(
-                scores=self.softmax(log_scores), # shape (b,support)
-                threshold=1.0/self.hparams['key_support_size'],
-                gt_binary=gt_binary,
-                debug=debug, 
-            )
-
-        else:
-            log_pxy, metrics = None, {}
-
-            # logits include <SOS> not <EOS>; labels not include <SOS> include <EOS>
-            loss = self.loss_criterion(
+        # scalar
+        loss = None if val_bool else self.loss_criterion(
                 logits=querykey_logits[:,:-1,:], 
                 labels=X_querykey[:, 1:], 
                 debug=debug)
 
+        # shape (b,support)
+        probs = self.softmax(log_pxy) if val_bool else None
+
+        # dict
+        metrics = self.metrics(
+                scores=self.softmax(probs), # shape (b,support)
+                threshold=1.0/self.hparams['key_support_size'],
+                gt_binary=gt_binary,
+                debug=debug, 
+            ) if val_bool else None
+
+        # dict
+        debug_metrics = self.debug_metrics(
+            scores=probs, # shape (b,support)
+            threshold=1.0/self.hparams['key_support_size'],
+            gt_binary=gt_binary,
+            debug=debug,
+        ) if val_bool else None
+
+
+        # if val_bool:
+        #     loss = None
+
+        #     # dict
+        #     log_scores = log_pxy
+
+        #     metrics = self.metrics(
+        #         scores=self.softmax(log_scores), # shape (b,support)
+        #         threshold=1.0/self.hparams['key_support_size'],
+        #         gt_binary=gt_binary,
+        #         debug=debug, 
+        #     )
+
+        # else:
+        #     log_pxy, metrics = None, {}
+
+        #     # logits include <SOS> not <EOS>; labels not include <SOS> include <EOS>
+        #     loss = self.loss_criterion(
+        #         logits=querykey_logits[:,:-1,:], 
+        #         labels=X_querykey[:, 1:], 
+        #         debug=debug)
+
+        metrics = {**metrics, **debug_metrics} if val_bool else None
         return log_pxy, loss, None, metrics
 
     ###################################################
@@ -265,8 +298,8 @@ class GenerativeTrainModule(TrainModule):
         # log
         step_metrics = {
             **{'train_loss': loss, 'learning_rate': lr}, 
-            **{'train_'+m:tr_metrics1[m] for m in tr_metrics1}, 
-            **{'train_'+m:tr_metrics2[m] for m in tr_metrics2}
+            **({'train_'+m:tr_metrics1[m] for m in tr_metrics1} if tr_metrics1 else {}), 
+            **({'train_'+m:tr_metrics2[m] for m in tr_metrics2} if tr_metrics2 else {}),
             }
         self.log_metrics(step_metrics)
 
@@ -413,21 +446,25 @@ class ContrastiveTrainModule(TrainModule):
         # scalar, shape(b,)
         loss, loss_full = (None, None) if val_bool else self.loss_criterion(logits, X_key, debug=debug)
 
-        # scalar
+        # shape (b,support)
+        probs = self.softmax(logits)
+
+        # dict
         metrics = self.metrics(
-            scores=self.softmax(logits), # shape (b,support)
+            scores=probs, # shape (b,support)
             threshold=1.0/self.hparams['key_support_size'],
             gt_binary=gt_binary,
             debug=debug,
         ) if val_bool else None
 
-        # scalar
+        # dict
         debug_metrics = self.debug_metrics(
-            scores=self.softmax(logits), # shape (b,support)
+            scores=probs, # shape (b,support)
             threshold=1.0/self.hparams['key_support_size'],
             gt_binary=gt_binary,
             debug=debug,
         ) if val_bool else None
+        # debug_metrics = {}
 
         metrics = {**metrics, **debug_metrics} if val_bool else None 
 
@@ -449,6 +486,7 @@ class ContrastiveTrainModule(TrainModule):
                 _, _, _, tr_metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
             else:
                 tr_metrics = {}
+        # tr_metrics = {}
                 
         if self.debug:
             print('-----------------------------')
@@ -463,7 +501,7 @@ class ContrastiveTrainModule(TrainModule):
 
         # log
         step_metrics = {'train_loss': loss, 'learning_rate': lr, 'global_step':global_step}
-        step_metrics = {**step_metrics, **{'train_'+m:tr_metrics[m] for m in tr_metrics}}
+        step_metrics = {**step_metrics, **({'train_'+m:tr_metrics[m] for m in tr_metrics} if tr_metrics else {})}
         self.log_metrics(step_metrics)
         return loss
 
