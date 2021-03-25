@@ -208,8 +208,10 @@ class GenerativeTrainModule(TrainModule):
 
         # scalar
         loss = None if val_bool else self.loss_criterion(
-                logits=querykey_logits[:,:-1,:], 
-                labels=X_querykey[:, 1:], 
+                # logits=querykey_logits[:,:-1,:], 
+                # labels=X_querykey[:, 1:], 
+                logits=querykey_logits[:,3,:], # predc1, predc2, predSEP, predK
+                labels=X_querykey[:, 4], # <SOS> c1 c2 <SEP> k
                 debug=debug)
 
         # shape (b,support)

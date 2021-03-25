@@ -161,41 +161,57 @@ class ContrastiveDebugMetrics(nn.Module):
         # Are the top k correct?
         b = scores.shape[0]
         
-        topk_pred_overlap_count = defaultdict(list)
-        topk_pred_above_threshold_count = defaultdict(list)
-        pred_above_threshold_count = defaultdict(list)
-        gt_logits_above_threshold_count = defaultdict(list)
+        zero = lambda: torch.tensor(0.).type_as(scores)
+        topk_pred_overlap_count = defaultdict(float)
+        topk_pred_above_threshold_count = defaultdict(zero)
+        pred_above_threshold_count = defaultdict(zero)
+        gt_logits_above_threshold_count = defaultdict(zero)
+        gt_pred_scores = defaultdict(zero)
+        not_gt_pred_scores = defaultdict(zero)
+        # normalizer
+        topk_pred_count = defaultdict(zero)
 
         for b_i in range(b):
 
             k = torch.sum(gt_binary[b_i]).int().item()
+            topk_pred_count[k] += 1.0
+
             # (k, )
             gt_idxs = torch.nonzero(gt_binary[b_i]).squeeze(-1)
+            not_gt_idx = torch.nonzero(gt_binary[b_i]==0).squeeze(-1)
             # (k, )
             pred_topk_vals, pred_topk_idxs = torch.topk(scores[b_i], k=k)
 
             # how many of the top k predictions are in ground-truth?
             topk_p_overlap_ct = len(np.intersect1d(gt_idxs.cpu().numpy(), pred_topk_idxs.cpu().numpy()))
-            topk_pred_overlap_count[k].append(topk_p_overlap_ct)
+            topk_pred_overlap_count[k] += topk_p_overlap_ct
 
             # how many of the top k predictions are above threshold?
-            topk_p_abv_thresh_ct = torch.sum(pred_topk_vals >= threshold).item() 
-            topk_pred_above_threshold_count[k].append(topk_p_abv_thresh_ct)
+            topk_p_abv_thresh_ct = torch.sum(pred_topk_vals >= threshold)#.item() 
+            topk_pred_above_threshold_count[k] += topk_p_abv_thresh_ct
 
             # how many of the total predictions are above threshold?
-            p_abv_thresh_ct = torch.sum(scores[b_i] >= threshold).item()
-            pred_above_threshold_count[k].append(p_abv_thresh_ct)
+            p_abv_thresh_ct = torch.sum(scores[b_i] >= threshold)#.item()
+            pred_above_threshold_count[k] += p_abv_thresh_ct
 
-            # how many of pred logits corresponding to gt positions are above threshold?
-            gt_logits_abv_thresh_ct = torch.sum(torch.logical_and((scores[b_i] >= threshold), gt_binary[b_i])).item()
-            gt_logits_above_threshold_count[k].append(gt_logits_abv_thresh_ct)
+            # how many of pred probs corresponding to gt positions are above threshold?
+            gt_logits_abv_thresh_ct = torch.sum(torch.logical_and((scores[b_i] >= threshold), gt_binary[b_i]))#.item()
+            gt_logits_above_threshold_count[k] += gt_logits_abv_thresh_ct
+
+            # what are the values of the gt probs? are they close to the threshold? 
+            gt_scores = torch.mean(scores[b_i][gt_idxs])#.item()
+            gt_pred_scores[k] += gt_scores
+            not_gt_scores = torch.mean(scores[b_i][not_gt_idx])#.item()
+            not_gt_pred_scores[k] += not_gt_scores
         
-        topk_pred_overlap_count = {f'gt{k};top{k}_overlap_count':np.mean(topk_pred_overlap_count[k]) for k in topk_pred_overlap_count}
-        topk_pred_above_threshold_count = {f'gt{k};top{k}_pred_above_threshold_count':np.mean(topk_pred_above_threshold_count[k]) for k in topk_pred_above_threshold_count}
-        pred_above_threshold_count = {f'gt{k};total_pred_above_threshold_count':np.mean(pred_above_threshold_count[k]) for k in pred_above_threshold_count}
-        gt_logits_above_threshold_count = {f'gt{k};gt_logits_above_threshold_count':np.mean(gt_logits_above_threshold_count[k]) for k in gt_logits_above_threshold_count}
+        topk_pred_overlap_count = {f'gt{k};top{k}_overlap_count':topk_pred_overlap_count[k]/topk_pred_count[k] for k in topk_pred_overlap_count}
+        topk_pred_above_threshold_count = {f'gt{k};top{k}_pred_above_threshold_count':topk_pred_above_threshold_count[k]/topk_pred_count[k] for k in topk_pred_above_threshold_count}
+        pred_above_threshold_count = {f'gt{k};total_pred_above_threshold_count':pred_above_threshold_count[k]/topk_pred_count[k] for k in pred_above_threshold_count}
+        gt_logits_above_threshold_count = {f'gt{k};gt_logits_above_threshold_count':gt_logits_above_threshold_count[k]/topk_pred_count[k] for k in gt_logits_above_threshold_count}
+        gt_pred_scores = {f'gt{k};gt_pred_scores':gt_pred_scores[k]/topk_pred_count[k] for k in gt_pred_scores}
+        not_gt_pred_scores = {f'gt{k};not_gt_pred_scores':not_gt_pred_scores[k]/topk_pred_count[k] for k in not_gt_pred_scores}
 
-        return {**topk_pred_overlap_count, **topk_pred_above_threshold_count, **pred_above_threshold_count, **gt_logits_above_threshold_count}
+        return {**topk_pred_overlap_count, **topk_pred_above_threshold_count, **pred_above_threshold_count, **gt_logits_above_threshold_count, **gt_pred_scores, **not_gt_pred_scores}
             
 
 class GenerativeDebugMetrics(ContrastiveDebugMetrics):
