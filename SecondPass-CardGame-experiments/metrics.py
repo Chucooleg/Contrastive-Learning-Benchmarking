@@ -1,7 +1,9 @@
+from typing import DefaultDict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from collections import defaultdict
 
 
 class InfoCELoss(nn.Module):
@@ -142,6 +144,54 @@ class LabelSmoothedLoss(nn.Module):
 
         return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs_smoothed)
 
+############################################################
+
+class GenerativeDebugMetrics(nn.Module):
+
+    def __init__(self):
+        raise NotImplementedError
+
+
+class ContrastiveDebugMetrics(nn.Module):
+
+    def __init__(self, num_attributes, num_attr_vals, key_support_size):
+        '''
+        tot_k: total number of candidates. e.g. 81 cards
+        '''
+        super().__init__()
+        self.num_attributes = num_attributes
+        self.num_attr_vals = num_attr_vals
+        self.key_support_size = key_support_size
+
+    def forward(self, scores, threshold, gt_binary, debug):
+        # Are the top k correct?
+        b = scores.shape[0]
+        
+        topk_accuracy = defaultdict(list)
+        topk_above_threshold = defaultdict(list)
+
+        for b_i in range(b):
+
+            k = torch.sum(gt_binary[b_i]).int()
+            # (k, )
+            gt_idxs = torch.nonzero(gt_binary[b_i]).squeeze(-1)
+            # (k, )
+            pred_topk_vals, pred_topk_idxs = torch.topk(scores, k=k)
+
+            # how many of the top k predictions are in ground-truth?
+            acc = np.intersect1d(gt_idxs.cpu().numpy(), pred_topk_idxs.cpu().numpy()).shape[0] * 1.0 / k
+            topk_accuracy[k].append(acc)
+
+            # how many of the top k predictions are above threshold?
+            above_threshold = (torch.sum(pred_topk_vals > threshold) * 1.0 / k).item() 
+            topk_above_threshold[k].append(above_threshold)
+        
+        breakpoint()
+        topk_accuracy = {f'top{k}_accuracy':np.mean(topk_accuracy[k]) for k in topk_accuracy}
+        topk_above_threshold = {f'top{k}_above_threshold':np.mean(topk_above_threshold[k]) for k in topk_above_threshold}
+
+        return {**topk_accuracy, **topk_above_threshold}
+            
 
 ############################################################
 class ThresholdedMetrics(nn.Module):

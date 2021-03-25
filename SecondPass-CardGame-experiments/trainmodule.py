@@ -9,7 +9,7 @@ import numpy as np
 
 import contrastive_model
 import generative_model
-from metrics import LabelSmoothedLoss, InfoCELoss, CELoss, ThresholdedMetrics
+from metrics import LabelSmoothedLoss, InfoCELoss, CELoss, ThresholdedMetrics, ContrastiveDebugMetrics, GenerativeDebugMetrics
 from optimizers import LRScheduledAdam
 
 
@@ -37,6 +37,7 @@ class TrainModule(pl.LightningModule):
 
         self.extra_monitors = hparams['extra_monitors']
         self.checkpoint_updated = False
+        self.val_every_n_epoch = self.hparams['val_every_n_epoch']
 
     ###################################################
     # hack checkpoint dir name to add runID
@@ -103,8 +104,7 @@ class GenerativeTrainModule(TrainModule):
         self.EOS = self.hparams['EOS']
         self.PAD = self.hparams['PAD']
         self.SEP = self.hparams['SEP']
-        self.val_every_n_epoch = self.hparams['val_every_n_epoch']
-
+        
     ###################################################
 
     # def score_sequences(self, X_query_allkeys, query_allkey_logits):
@@ -241,7 +241,8 @@ class GenerativeTrainModule(TrainModule):
         )
 
         with torch.no_grad():
-            if (self.current_epoch <= 50) or  ((self.current_epoch+1) % self.val_every_n_epoch == 0):
+            # if (self.current_epoch <= 50) or  ((self.current_epoch+1) % self.val_every_n_epoch == 0):
+            if (self.current_epoch+1) % self.val_every_n_epoch == 0:
                 _, _, _, tr_metrics2 = self(
                     X_querykey,
                     gt_binary, 
@@ -387,6 +388,11 @@ class ContrastiveTrainModule(TrainModule):
         else:
             self.loss_criterion = self.CE_criterion
 
+        self.debug_metrics = ContrastiveDebugMetrics(
+            num_attributes=self.hparams['num_attributes'], 
+            num_attr_vals=self.hparams['num_attr_vals'], 
+            key_support_size=self.hparams['key_support_size'])
+
         self.softmax = nn.Softmax(dim=-1)
         
     ###################################################
@@ -414,6 +420,17 @@ class ContrastiveTrainModule(TrainModule):
             gt_binary=gt_binary,
             debug=debug,
         ) if val_bool else None
+
+        # scalar
+        debug_metrics = self.debug_metrics(
+            scores=self.softmax(logits), # shape (b,support)
+            threshold=1.0/self.hparams['key_support_size'],
+            gt_binary=gt_binary,
+            debug=debug,
+        ) if val_bool else None
+
+        metrics = {**metrics, **debug_metrics} if val_bool else None 
+
         return logits, loss, loss_full, metrics
     
     ###################################################
@@ -428,7 +445,10 @@ class ContrastiveTrainModule(TrainModule):
         _, loss, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
 
         with torch.no_grad():
-            _, _, _, tr_metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
+            if (self.current_epoch+1) % self.val_every_n_epoch == 0:
+                _, _, _, tr_metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
+            else:
+                tr_metrics = {}
                 
         if self.debug:
             print('-----------------------------')
