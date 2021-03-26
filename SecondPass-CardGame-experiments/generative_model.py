@@ -6,7 +6,7 @@ import math
 from collections import OrderedDict
 
 from dataraw_sampling import decode_key_to_vocab_token
-from transformer import construct_transformer_decoder, ScaledEmbedding, LearnedPositionEncoder
+from transformer import construct_transformer_decoder, ScaledEmbedding, LearnedPositionEncoder, LayerNorm
 
 
 def construct_full_model(hparams):
@@ -44,6 +44,7 @@ def construct_full_model(hparams):
         ),
         querykey_decoder = querykey_decoder,
         classifier=Classifier(
+            d_model=hparams['d_model'],
             shared_embed=querykey_embed_X.embedding,
             vocab_size=hparams['vocab_size'],
         ), 
@@ -91,10 +92,14 @@ class DecoderPredictor(nn.Module):
         self.vocab_size = vocab_size
         self.vocab_by_property = vocab_by_property
         self.len_k = len_k
+        self.pred_key_pos = 3 # <SOS> c1 c2 <SEP>
         self.debug = debug
         if self.querykey_decoder:
             self.setup_all_keys()
+
         self.logsoftmax = nn.LogSoftmax(dim=-1)
+        self.softmax = nn.Softmax(dim=-1)
+        self.key_projection = nn.Linear(self.vocab_size, self.key_support_size)
 
     def setup_all_keys(self):
 
@@ -115,13 +120,23 @@ class DecoderPredictor(nn.Module):
         )
 
     def forward(self, X_querykey, from_support, debug=False):
-        # expects querykey_logits, query_allkey_logits, X_query_allkeys
+        # shape (b, key_support_size)
+        key_logits = self.forward_minibatch(X_querykey, debug=debug)
+
         if from_support:
-            log_pxy = self.forward_norm_support(X_querykey, debug=debug)
-            return None, log_pxy
+            py_giv_x = self.softmax(key_logits)
+            return key_logits, py_giv_x
         else:
-            querykey_logits = self.forward_minibatch(X_querykey, debug=debug)
-            return querykey_logits, None
+            return key_logits, None
+
+    # def forward(self, X_querykey, from_support, debug=False):
+    #     # expects querykey_logits, query_allkey_logits, X_query_allkeys
+    #     if from_support:
+    #         log_pxy = self.forward_norm_support(X_querykey, debug=debug)
+    #         return None, log_pxy
+    #     else:
+    #         querykey_logits = self.forward_minibatch(X_querykey, debug=debug)
+    #         return querykey_logits, None
 
     def forward_minibatch(self, X_querykey, debug=False):
         '''
@@ -133,29 +148,36 @@ class DecoderPredictor(nn.Module):
         decoder_out = self.decode_querykey(X_querykey)
         # shape (b, inp_len, V)
         out_logits = self.classifier(decoder_out)
+        # shape (b, V)
+        key_pos_logits = out_logits[:,self.pred_key_pos,:] 
+        # shape (b, key_support_size)
+        key_logits = self.key_projection(key_pos_logits)       
+
         assert out_logits.shape == (b, inp_len, self.vocab_size)
-        return out_logits
+        assert key_logits.shape == (b, self.key_support_size)
 
-    def forward_norm_support(self, X_querykey, debug=False):
+        return key_logits
 
-        b, inp_len = X_querykey.shape
-        log_pxy = torch.empty(b, self.key_support_size).type_as(X_querykey).float()
+    # def forward_norm_support(self, X_querykey, debug=False):
 
-        SEP_poses = torch.nonzero(X_querykey == self.SEP)[:,1]
-        EOS_poses = torch.nonzero(X_querykey == self.EOS)[:,1]
+    #     b, inp_len = X_querykey.shape
+    #     log_pxy = torch.empty(b, self.key_support_size).type_as(X_querykey).float()
 
-        for b_i in range(b):
-            SEP_pos, EOS_pos  = SEP_poses[b_i], EOS_poses[b_i]
-            # shape(self.key_support_size, inp_len)     
-            X_query_allkeys = X_querykey[b_i].repeat(self.key_support_size, 1)
-            X_query_allkeys[:,SEP_pos+1:EOS_pos] = self.all_keys
-            # shape(self.key_support_size, inp_len, V)
-            query_allkey_logits = self.forward_minibatch(X_query_allkeys, debug=debug)
+    #     SEP_poses = torch.nonzero(X_querykey == self.SEP)[:,1]
+    #     EOS_poses = torch.nonzero(X_querykey == self.EOS)[:,1]
 
-            # shape (key_support_size,)
-            log_pxy[b_i] = self.score_one_example(X_query_allkeys, query_allkey_logits)
+    #     for b_i in range(b):
+    #         SEP_pos, EOS_pos  = SEP_poses[b_i], EOS_poses[b_i]
+    #         # shape(self.key_support_size, inp_len)     
+    #         X_query_allkeys = X_querykey[b_i].repeat(self.key_support_size, 1)
+    #         X_query_allkeys[:,SEP_pos+1:EOS_pos] = self.all_keys
+    #         # shape(self.key_support_size, inp_len, V)
+    #         query_allkey_logits = self.forward_minibatch(X_query_allkeys, debug=debug)
 
-        return log_pxy
+    #         # shape (key_support_size,)
+    #         log_pxy[b_i] = self.score_one_example(X_query_allkeys, query_allkey_logits)
+
+    #     return log_pxy
 
     def score_one_example(self, X_query_allkeys, query_allkey_logits):
         '''
@@ -182,7 +204,7 @@ class DecoderPredictor(nn.Module):
         log_pxy = torch.sum(log_probs_sentence_masked, dim=-1)
 
         # shape (key_support_size,)
-        return log_pxy    
+        return log_pxy
 
     def decode_querykey(self, X_querykey):
         '''
@@ -205,7 +227,7 @@ class DecoderPredictor(nn.Module):
 
 class Classifier(nn.Module):
 
-    def __init__(self, shared_embed, vocab_size):
+    def __init__(self, d_model, shared_embed, vocab_size):
         '''
         shared_embed: same embedding matrix as the input and output layers.
                     shape(V, d_model)
@@ -213,6 +235,7 @@ class Classifier(nn.Module):
         super().__init__()
         self.shared_embed = shared_embed
         self.vocab_size = vocab_size
+        # self.norm = LayerNorm(d_model)
 
     def forward(self, decoder_out):
         '''
@@ -223,6 +246,7 @@ class Classifier(nn.Module):
         # shape (b, out_len, d_model) mm (d_model, V) = (b, out_len, V)
         logits = decoder_out.matmul(self.shared_embed.weight.t())
         assert logits.shape == (b, l, self.vocab_size)
+        
         # # shape (b, out_len, V) too expensive to compute everytime
         # probs = torch.softmax(logits, dim=-1)
         return logits #, probs

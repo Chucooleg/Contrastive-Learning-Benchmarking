@@ -49,25 +49,25 @@ class CELoss(nn.Module):
         super().__init__()
         self.key_support_size = key_support_size
         self.temperature_const = temperature_const
-        self.CE_loss = nn.CrossEntropyLoss(reduction='none')
+        self.CE_loss = nn.CrossEntropyLoss(reduction='sum')
 
-    def forward(self, logits, X_keyId, debug=False):
+    def forward(self, logits, labels, debug=False):
         '''
         logits: shape (batch_size=b, key_support_size)
-        X_keyId: shape (batch_size=b, 1)
+        labels: shape (batch_size=b, 1)
         '''
         assert logits.shape[1] == self.key_support_size
         b = logits.shape[0]
 
         logits /= self.temperature_const
-        labels = X_keyId.squeeze(-1)
+        labels = labels.squeeze(-1)
         # shape (b,)
-        loss_full = self.CE_loss(logits, labels)
+        loss = self.CE_loss(logits, labels)
 
         if debug:
-            print('loss_full=',loss_full)
+            print('loss=',loss)
 
-        return torch.sum(loss_full), loss_full
+        return loss
 
 
 ############################################################
