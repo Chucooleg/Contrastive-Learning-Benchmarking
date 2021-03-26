@@ -90,7 +90,7 @@ class LabelSmoothedLoss(nn.Module):
         logits: shape (batch_size=b, output_len=m, vocab_size=K)
         labels: shape (batch_size=b, output_len=m)
         '''
-        b, m, K = logits.shape
+        K = logits.shape[-1]
 
         # Temperature Scaling
         # shape (b*m, K)
@@ -99,7 +99,7 @@ class LabelSmoothedLoss(nn.Module):
 
         # Expand Labels to one-hot, Smooth the values
         gt_probs_smoothed = torch.full(
-            size=(b*m, K), 
+            size=scaled_logits.shape, 
             # fill_value=self.smoothing_const / (K - 1), # more mathematicaly correct
             fill_value=self.smoothing_const / (K - 2) #minus true and padding
         ).type_as(logits)
@@ -204,6 +204,7 @@ class ContrastiveDebugMetrics(nn.Module):
             not_gt_scores = torch.mean(scores[b_i][not_gt_idx])#.item()
             not_gt_pred_scores[k] += not_gt_scores
         
+        
         topk_pred_overlap_count = {f'gt{k};top{k}_overlap_count':topk_pred_overlap_count[k]/topk_pred_count[k] for k in topk_pred_overlap_count}
         topk_pred_above_threshold_count = {f'gt{k};top{k}_pred_above_threshold_count':topk_pred_above_threshold_count[k]/topk_pred_count[k] for k in topk_pred_above_threshold_count}
         pred_above_threshold_count = {f'gt{k};total_pred_above_threshold_count':pred_above_threshold_count[k]/topk_pred_count[k] for k in pred_above_threshold_count}
@@ -303,7 +304,6 @@ class ThresholdedMetrics(nn.Module):
         f1_meanrows = torch.mean(f1_row)
         # f1, computed per query-key, average across all
         f1_all = 2 * (precision_all * recall_all) / (precision_all + recall_all)
-
 
         if debug:
             print('####################################################')

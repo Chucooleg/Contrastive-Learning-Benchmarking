@@ -38,6 +38,7 @@ class TrainModule(pl.LightningModule):
         self.extra_monitors = hparams['extra_monitors']
         self.checkpoint_updated = False
         self.val_every_n_epoch = self.hparams['val_every_n_epoch']
+        self.batch_size = hparams['batch_size']
 
     ###################################################
     # hack checkpoint dir name to add runID
@@ -73,12 +74,13 @@ class TrainModule(pl.LightningModule):
         for m in metric_names:
             if not ('max_memory_alloc_cuda' in m ):
                 if isinstance(outputs[0][m], torch.Tensor):
-                    epoch_metrics['avg_'+m] = torch.stack([x[m] for x in outputs]).mean()
+                    # epoch_metrics['avg_'+m] = torch.stack([x[m] for x in outputs]).mean()
+                    epoch_metrics['avg_'+m] = torch.stack([x.get(m, torch.tensor(0.).type_as(outputs[0]['val_loss'])) for x in outputs]).sum() / sum([float(m in x) for x in outputs])
                 elif isinstance(outputs[0][m], float) or isinstance(outputs[0][m], int):
-                    epoch_metrics['avg_'+m] = sum([x[m] for x in outputs]) / len(outputs)
+                    # epoch_metrics['avg_'+m] = sum([x[m] for x in outputs]) / len(outputs)
+                    epoch_metrics['avg_'+m] = sum([x.get(m, 0.) for x in outputs]) / sum([float(m in x) for x in outputs])
                 else:
                     import pdb; pdb.set_trace()
-
         self.log_metrics(epoch_metrics)
         return epoch_metrics         
     
@@ -299,7 +301,7 @@ class GenerativeTrainModule(TrainModule):
 
         # log
         step_metrics = {
-            **{'train_loss': loss, 'learning_rate': lr}, 
+            **{'train_loss': loss, 'train_loss_per_example': loss/X_querykey.shape[0], 'learning_rate': lr}, 
             **({'train_'+m:tr_metrics1[m] for m in tr_metrics1} if tr_metrics1 else {}), 
             **({'train_'+m:tr_metrics2[m] for m in tr_metrics2} if tr_metrics2 else {}),
             }
@@ -340,7 +342,7 @@ class GenerativeTrainModule(TrainModule):
             )
         
         # log 
-        step_metrics = {**{'val_loss': loss}, **{'val_'+m:metrics[m] for m in metrics}}
+        step_metrics = {**{'val_loss': loss, 'val_loss_per_example': loss/X_querykey.shape[0]}, **{'val_'+m:metrics[m] for m in metrics}}
         devices_max_memory_alloc = self.get_max_memory_alloc()
         for device, val in devices_max_memory_alloc.items():
             step_metrics[f'step_max_memory_alloc_cuda:{device}'] = val
@@ -502,7 +504,7 @@ class ContrastiveTrainModule(TrainModule):
         lr = self.optimizers().param_groups[0]['lr']
 
         # log
-        step_metrics = {'train_loss': loss, 'learning_rate': lr, 'global_step':global_step}
+        step_metrics = {'train_loss': loss, 'train_loss_per_example': loss/X_query.shape[0], 'learning_rate': lr, 'global_step':global_step}
         step_metrics = {**step_metrics, **({'train_'+m:tr_metrics[m] for m in tr_metrics} if tr_metrics else {})}
         self.log_metrics(step_metrics)
         return loss
@@ -526,7 +528,7 @@ class ContrastiveTrainModule(TrainModule):
             )
         
         # log 
-        step_metrics = {**{'val_loss': loss}, **{'val_'+m:metrics[m] for m in metrics}}
+        step_metrics = {**{'val_loss': loss, 'val_loss_per_example': loss/X_query.shape[0]}, **{'val_'+m:metrics[m] for m in metrics}}
         devices_max_memory_alloc = self.get_max_memory_alloc()
         for device, val in devices_max_memory_alloc.items():
             step_metrics[f'step_max_memory_alloc_cuda:{device}'] = val
