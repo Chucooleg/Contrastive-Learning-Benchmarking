@@ -138,7 +138,7 @@ def sample_one_training_datapoint_wrong_props(num_attributes, num_attr_vals, car
     return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
 
 
-def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup):
+def sample_one_training_datapoint_rejection_sampling(num_attributes, num_attr_vals, card2idx_lookup):
     '''Rejection Sampling'''
 
     success = False 
@@ -161,6 +161,35 @@ def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup
     return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
 
 
+def sample_one_training_datapoint(all_query_and_keys):
+    '''Rejection Sampling'''
+
+    idx = np.random.choice(len(all_query_and_keys))
+    q_vocab_tokens = all_query_and_keys[idx][0]
+    k_vocab_tokens = all_query_and_keys[idx][1]
+    gt_ks_idx = all_query_and_keys[idx][2]
+
+    # list, list, list
+    return q_vocab_tokens, k_vocab_tokens, gt_ks_idx
+
+
+def construct_all_query_and_keys(num_attributes, num_attr_vals, card2idx_lookup, idx2card_lookup):
+
+    all_query_and_keys = []
+
+    for card1_idx, card2_idx in itertools.product(*[idx2card_lookup.keys(), idx2card_lookup.keys()]):
+        
+        card1_prop = idx2card_lookup[card1_idx]
+        card2_prop = idx2card_lookup[card2_idx]
+        keys_prop = resolve(card1_prop, card2_prop, (0,1,2,), set((0,1,2,)))
+        gt_ks_idx = [card2idx_lookup[kp] for kp in keys_prop]
+        
+        for k_id in gt_ks_idx:
+            all_query_and_keys.append(([card1_idx, card2_idx], [k_id], gt_ks_idx))
+        
+    return all_query_and_keys
+
+
 def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     '''Simple SET'''
 
@@ -171,9 +200,12 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     tokens = []
     gt_idxs = []
 
+
     start_time = time.time()
     card2idx_lookup, idx2card_lookup = construct_card_idx_lookup(num_attributes, num_attr_vals)
     print('Time to build cardpair_answer_lookup:', time.time()-start_time, 'seconds')
+
+    all_query_and_keys = construct_all_query_and_keys(num_attributes, num_attr_vals, card2idx_lookup, idx2card_lookup)
 
     base_vocab_size =  (num_attr_vals+1)**num_attributes # include * cards
     symbol_vocab_token_lookup = {
@@ -191,11 +223,16 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     
     max_len_q = 2
     for i in tqdm(range(N)):
+
         q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(
-            num_attributes=num_attributes, 
-            num_attr_vals=num_attr_vals, 
-            card2idx_lookup=card2idx_lookup, 
+            all_query_and_keys
         )
+
+        # q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(
+        #     num_attributes=num_attributes, 
+        #     num_attr_vals=num_attr_vals, 
+        #     card2idx_lookup=card2idx_lookup, 
+        # )
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)

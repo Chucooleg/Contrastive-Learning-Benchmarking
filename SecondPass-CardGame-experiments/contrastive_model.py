@@ -90,7 +90,7 @@ def construct_full_model(hparams):
             OrderedDict(
                 make_classifier(
                     scale_down_factor=hparams['nonlinear_classifier_scale_down_factor'], 
-                    d_model=hparams['d_model'],
+                    vec_repr=hparams['vec_repr'],
                     non_linearity_class = nn.ReLU,
                 )
             )
@@ -367,14 +367,14 @@ class EncoderPredictor(nn.Module):
     #         return self.key_projection(repr[:, self.repr_pos, :])
 
 
-def make_classifier(scale_down_factor, d_model, non_linearity_class):
+def make_classifier(scale_down_factor, vec_repr, non_linearity_class):
     '''
     scale_down_factor: list e.g. [2,2,4]
     '''
     layer_lst = []
-    last_dim = 2*d_model
+    last_dim = 2*vec_repr
     for i in range(len(scale_down_factor)):
-        new_dim = int(2*d_model / scale_down_factor[i])
+        new_dim = int(2*vec_repr / scale_down_factor[i])
         layer_lst.append(('linear{}'.format(i), nn.Linear(last_dim, new_dim)))
         layer_lst.append(('Nonlinear{}'.format(i), non_linearity_class()))
         last_dim = new_dim

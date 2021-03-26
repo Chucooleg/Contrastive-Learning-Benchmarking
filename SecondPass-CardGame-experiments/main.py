@@ -149,7 +149,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
         callbacks=[checkpoint_callback, lr_monitor],
-        # log_every_n_steps=1,
+        log_every_n_steps=1,
     )
     
     # with torch.autograd.detect_anomaly():
