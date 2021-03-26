@@ -113,7 +113,7 @@ def run_test(args, hparams, ckpt_name, trainmodule, datamodule, ckpt_dir_PATH, f
         log_gpu_memory='all',
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
-        log_every_n_steps=1,
+        # log_every_n_steps=1,
     )
     res = trainer.test(model=trainmodule, datamodule=datamodule)
     
@@ -149,7 +149,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
         callbacks=[checkpoint_callback, lr_monitor],
-        log_every_n_steps=1,
+        # log_every_n_steps=1,
     )
     
     # with torch.autograd.detect_anomaly():
@@ -185,7 +185,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
         gradient_clip_val=hparams['gradient_clip_val'],
         callbacks=[checkpoint_callback, lr_monitor],
         profiler="simple",
-        log_every_n_steps=1,
+        # log_every_n_steps=1,
         # num_sanity_val_steps=0,
     )
 

@@ -3,13 +3,13 @@
 
     "batch_size": 1024,
     "max_epochs":20000000000,
-    "val_every_n_epoch": 1,
+    "val_every_n_epoch": 100,
 
     "d_model": 512,
     "embed_dropout": 0.0,
     "vec_repr": 512,
 
-    "model": "generative",
+    "model": "contrastive",
 
     "d_ff":1024,
     "N_enc": 8,
@@ -30,10 +30,10 @@
     "loss_smoothing_const": 0.1,
     "nonlinear_classifier_scale_down_factor": [2,1],
 
-    "contrastive_optimizer": "adam",
+    "contrastive_optimizer": "scheduled_adam",
     "cosine_annealing_T_max": 30,
 
-    "adam_lr": 1e-06,
+    "adam_lr": 1e-04,
     "adam_beta1": 0.9,
     "adam_beta2": 0.999,
     "adam_epsilon": 1e-08,
@@ -45,15 +45,15 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-06,
-    "scheduled_adam_warmup_steps": 2000,
+    "scheduled_adam_warmup_steps": 8000,
 
     "additional_lr_decay": true,
     "additional_lr_decay_gamma": 0.9,
-    "decay_lr_starts": 2000,
+    "decay_lr_starts": 8000,
     "decay_lr_stops": 80000,
     "decay_lr_interval": 1000,
     "generative_overall_lr_scale": 1.0,
-    "contrastive_overall_lr_scale": 0.002,
+    "contrastive_overall_lr_scale": 0.05,
 
     "gradient_clip_val": 0.0,
 

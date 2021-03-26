@@ -118,11 +118,36 @@ def construct_card_idx_lookup(num_attributes, num_attr_vals):
             
     return card2idx_lookup, idx2card_lookup
 
+
 ####################################################################################
 
-def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup):
+def sample_one_training_datapoint_wrong_props(num_attributes, num_attr_vals, card2idx_lookup, sampler_weights):
+    '''Gives wrong sampling props'''
 
     card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
+
+    card1_idx = card2idx_lookup[tuple(card1_prop)]
+    card2_idx = card2idx_lookup[tuple(card2_prop)]
+
+    q_vocab_tokens = [card1_idx, card2_idx]
+
+    gt_ks_idx = [card2idx_lookup[kp] for kp in keys_prop]
+    k_vocab_tokens = random.choice(gt_ks_idx)
+
+    # list, list, list
+    return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
+
+
+def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup):
+    '''Rejection Sampling'''
+
+    success = False 
+
+    while not success:
+
+        card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
+        if random.random() <= (len(keys_prop) *1.0 / (num_attr_vals**num_attributes)):
+            success = True
 
     card1_idx = card2idx_lookup[tuple(card1_prop)]
     card2_idx = card2idx_lookup[tuple(card2_prop)]

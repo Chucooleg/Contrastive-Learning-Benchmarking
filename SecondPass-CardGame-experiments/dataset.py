@@ -6,7 +6,8 @@ import random
 
 from dataraw_sampling import (
     sample_one_training_datapoint, 
-    construct_card_idx_lookup)
+    construct_card_idx_lookup,
+    )
 
 # from dataraw_sampling_SimpleSET_prop_wildcard import (
 #     sample_one_training_datapoint, 
@@ -84,6 +85,7 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
         }
 
         self.batch_size = hparams['batch_size']
+
         
     def __len__(self):
         return self.batch_size * 2
