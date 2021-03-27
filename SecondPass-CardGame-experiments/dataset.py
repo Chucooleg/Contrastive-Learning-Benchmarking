@@ -7,7 +7,6 @@ import random
 from dataraw_sampling import (
     sample_one_training_datapoint, 
     construct_card_idx_lookup,
-    construct_all_query_and_keys
     )
 
 # Delete later
@@ -69,9 +68,7 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
         }
 
         self.batch_size = hparams['batch_size']
-        card2idx_lookup, idx2card_lookup = construct_card_idx_lookup(self.num_attributes, self.num_attr_vals)
-        self.all_query_and_keys = construct_all_query_and_keys(self.num_attributes, self.num_attr_vals, card2idx_lookup, idx2card_lookup)
-
+        self.card2idx_lookup, idx2card_lookup = construct_card_idx_lookup(self.num_attributes, self.num_attr_vals)
         
     def __len__(self):
         return self.batch_size * 2
@@ -79,9 +76,7 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
     def __getitem__(self, idx):
 
         # list, list if vocab_by_property else int 
-        y_vocab_tokens, x_vocab_tokens, gt_idxs = sample_one_training_datapoint(
-            self.all_query_and_keys
-        )
+        y_vocab_tokens, x_vocab_tokens, gt_idxs = sample_one_training_datapoint(self.num_attributes, self.num_attr_vals, self.card2idx_lookup)
 
         # list of integers
         gt_binary_tensor = self.make_gt_binary(gt_idxs)

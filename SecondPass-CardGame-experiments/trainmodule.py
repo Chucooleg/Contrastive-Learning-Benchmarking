@@ -152,10 +152,13 @@ class GenerativeTrainModule(TrainModule):
                 gt_binary=gt_binary
             )
         else:
-            loss = self.loss_criterion(
-                    logits=key_logits,
-                    X_keyId=X_querykey[:, 4], # <SOS> c1 c2 <SEP> k
-                    debug=debug)
+            try:
+                loss = self.loss_criterion(
+                        logits=key_logits,
+                        X_keyId=X_querykey[:, 8], # <SOS> c1-c6  <SEP> k
+                        debug=debug)
+            except:
+                breakpoint()
 
         # shape (b,support)
         probs = py_giv_x if val_bool else None
@@ -338,6 +341,7 @@ class ContrastiveTrainModule(TrainModule):
         val_bool: boolean. Compute metrics such as acc, precision, recall, f1 based on queries.
         full_test_bool: boolean. 
         '''
+
         b, len_q = X_query.shape
         assert len_q <= self.hparams['max_len_q'] + 2 # with <EOS> and <SOS>
 

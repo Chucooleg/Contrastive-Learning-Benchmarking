@@ -103,7 +103,8 @@ def draw_N_cardpairs(num_attributes, num_attr_vals, N):
         card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
         all_query_pairs += [card1_prop, card2_prop]
         all_key_subsets += keys_prop
-    return all_query_pairs, set(all_key_subsets), len(all_key_subsets)    
+    ans_key_subset = set(all_key_subsets)
+    return all_query_pairs, ans_key_subset, len(ans_key_subset)    
 
 def construct_card_idx_lookup(num_attributes, num_attr_vals):
     
@@ -128,22 +129,6 @@ def construct_card_idx_lookup(num_attributes, num_attr_vals):
             
     return card2idx_lookup, idx2card_lookup
 
-
-def construct_all_query_and_keys(num_attributes, num_attr_vals, card2idx_lookup, idx2card_lookup):
-
-    all_query_and_keys = []
-
-    for card1_idx, card2_idx in itertools.product(*[idx2card_lookup.keys(), idx2card_lookup.keys()]):
-        
-        card1_prop = idx2card_lookup[card1_idx]
-        card2_prop = idx2card_lookup[card2_idx]
-        keys_prop = resolve(card1_prop, card2_prop, (0,1,2,), set((0,1,2,)))
-        gt_ks_idx = [card2idx_lookup[kp] for kp in keys_prop]
-        
-        for k_id in gt_ks_idx:
-            all_query_and_keys.append(([card1_idx, card2_idx], [k_id], gt_ks_idx))
-        
-    return all_query_and_keys
 ####################################################################################
 
 def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup):
@@ -169,7 +154,7 @@ def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup
     while not success:
 
         query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=3)
-        if random.random() <= (len(ans_subset) *1.0 / (num_attr_vals**num_attributes)):
+        if random.random() <= (keys_len *1.0 / (num_attr_vals**num_attributes)):
             success = True
 
     # 6 tokens
@@ -211,10 +196,6 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     card2idx_lookup, idx2card_lookup = construct_card_idx_lookup(num_attributes, num_attr_vals)
     print('Time to build cardpair_answer_lookup:', time.time()-start_time, 'seconds')
 
-    start_time = time.time()
-    all_query_and_keys = construct_all_query_and_keys(num_attributes, num_attr_vals, card2idx_lookup, idx2card_lookup)
-    print('Time to build all_query_and_keys:', time.time()-start_time, 'seconds')
-
     base_vocab_size =  (num_attr_vals+1)**num_attributes # include * cards
     symbol_vocab_token_lookup = {
         '(': base_vocab_size,
@@ -232,9 +213,7 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     max_len_q = 2
     for i in tqdm(range(N)):
 
-        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(
-            all_query_and_keys
-        )
+        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup)
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)
@@ -245,15 +224,10 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
 
     for i in tqdm(range(N_test)):
 
-        q_vocab_tokens, _, gt_ks_idx = sample_one_testing_query_from_marginal(
-            num_attributes=num_attributes, 
-            num_attr_vals=num_attr_vals, 
-            card2idx_lookup=card2idx_lookup, 
-        )
+        q_vocab_tokens, _, gt_ks_idx = sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup)
 
         test_marginal_tokens.append((q_vocab_tokens,))
         test_marginal_gt_idxs.append(gt_ks_idx)       
-
 
     data = {
         'num_attributes':num_attributes,

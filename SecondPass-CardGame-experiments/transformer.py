@@ -383,7 +383,6 @@ def make_attn_mask(attender_pads, attendee_pads, mask_forward=False, debug=False
     Return:
         attn_mask: shape(b, n, m)
     '''
-
     b, n = attender_pads.shape
     b, m = attendee_pads.shape
 
