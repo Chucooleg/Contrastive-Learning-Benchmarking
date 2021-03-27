@@ -87,7 +87,7 @@ class KLdivLoss(nn.Module):
         K = logits.shape[-1]
         # shape (b, K)
         pred_logprobs = self.logprob(logits)
-        gt_probs = gt_binary / torch.sum(gt_binary)
+        gt_probs = gt_binary / torch.sum(gt_binary, dim=-1).unsqueeze(-1)
         return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs)
 
 ############################################################

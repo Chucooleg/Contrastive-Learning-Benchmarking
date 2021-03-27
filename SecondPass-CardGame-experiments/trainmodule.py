@@ -460,7 +460,7 @@ class ContrastiveTrainModule(TrainModule):
         
         # log
         step_metrics = {
-            **{'test_KL_loss':kl_loss},
+            **{'test_KL_loss':kl_loss, 'test_KL_loss_per_example': kl_loss/X_query.shape[0]},
             **{'test_'+m:metrics[m] for m in metrics},
         }
         self.log_metrics(step_metrics)
@@ -475,19 +475,6 @@ class ContrastiveTrainModule(TrainModule):
     ###################################################
     
     def configure_optimizers(self):
-        # opt = LRScheduledAdam(
-        #     params=self.model.parameters(),
-        #     d_model=self.hparams['d_model'], 
-        #     warmup_steps=self.hparams['scheduled_adam_warmup_steps'],
-        #     lr=0.,
-        #     betas=(
-        #         self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
-        #     eps=self.hparams['scheduled_adam_epsilon'],
-        #     correct_bias=True,
-        #     decay_lr=self.hparams["additional_lr_decay"],
-        #     decay_milestones=self.hparams["additional_lr_decay_milestones"], 
-        #     decay_gamma=self.hparams["additional_lr_decay_gamma"], 
-        # )
 
         assert self.hparams['contrastive_optimizer'] in ('sgd', 'scheduled_adam', 'adam', 'cosine_annealing')
 

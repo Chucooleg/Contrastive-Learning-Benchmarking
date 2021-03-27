@@ -94,7 +94,7 @@ def load_hparams(args, data):
     if args.mode == 'resume_train':
         hparams['max_epochs'] = int(args.resume_max_epochs)
 
-    if args.mode in ('resume_train', 'test'):
+    if args.mode in ('resume_train', 'test', 'test_marginal'):
         hparams['resume_checkpoint_dir'] = args.resume_checkpoint_dir 
 
     print('----------hparams----------')
@@ -200,7 +200,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
 
 
 def validate_args(args):
-    assert args.mode in ('train', 'resume_train', 'test', 'param_summary')
+    assert args.mode in ('train', 'resume_train', 'test', 'test_marginal', 'param_summary')
     assert os.path.exists(args.data_path), 'data_path does not exist' 
     assert args.project_name, 'missing project name. e.g. ContrastiveLearning-cardgame-Scaling'
 
@@ -212,7 +212,7 @@ def validate_args(args):
         assert args.runID, 'missing runID, e.g. 1lygiuq3'
         assert os.path.exists(args.resume_checkpoint_dir), f'Resume checkpoint_dir {args.resume_checkpoint_dir} does not exist.'
         args.config_path = os.path.join(args.resume_checkpoint_dir, 'config.json')
-        if args.mode == 'test':
+        if args.mode in ('test', 'test_marginal'):
             assert args.ckpt_name, 'missing ckpt_name for testing. e.g. last.ckpt'
 
 
@@ -319,7 +319,7 @@ def main(args):
         resume_train(
             args, hparams, project_name, args.runID, trainmodule, game_datamodule, ckpt_dir_PATH, wd_logger
         )
-    else: # test
+    else: # test, test_marginal
         run_test(args, hparams, args.ckpt_name, trainmodule, game_datamodule, ckpt_dir_PATH, figsize=(10,15))
 
     return trainmodule, game_datamodule

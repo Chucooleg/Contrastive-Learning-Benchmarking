@@ -411,11 +411,14 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
     
     def __init__(self, hparams, raw_data):
         super().__init__(hparams)
-        self.split = 'test'
+        if hparams['mode'] == 'test_marginal':
+            self.split = 'test_marginal'
+        else:
+            self.split = 'test'
         self.raw_data = raw_data
 
         # PLH
-        x_vocab_tokens_len = len(self.raw_data[self.split + '_tokens'][0][1])
+        x_vocab_tokens_len = 1
         self.x_vocab_tokens_place_holder = ([self.PLH] * x_vocab_tokens_len) if self.vocab_by_property else [self.PLH]
         
     def __len__(self):
@@ -424,7 +427,7 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
     def __getitem__(self, idx):
 
         # list
-        y_vocab_tokens, _ = self.raw_data[self.split + '_tokens'][idx]
+        y_vocab_tokens = self.raw_data[self.split + '_tokens'][idx][0]
         # list of integers
         gt_idxs = self.raw_data[self.split + '_gt_idxs'][idx]
         gt_binary_tensor = self.make_gt_binary(gt_idxs)
@@ -442,4 +445,4 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
             return (
                 torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # query
                 gt_binary_tensor, # all gt key ids
-            )  
+            )

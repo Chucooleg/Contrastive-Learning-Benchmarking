@@ -77,14 +77,3 @@ class GameDataModule(pl.LightningDataModule):
             # num_workers=8, pin_memory=True,
         )
         return test_loader
-
-
-#     def pad_collate(self, batch):
-#         '''pad sequences in a batch to have the same length'''
-#         (xx, yy) = zip(*batch)
-#         x_lens = [len(x) for x in xx]
-#         y_lens = [len(y) for y in yy]
-#         xx_pad = pad_sequence(xx, batch_first=True, padding_value=self.pad_idx_X)
-#         yy_pad = pad_sequence(yy, batch_first=True, padding_value=self.pad_idx_Y)
-# #         return xx_pad, yy_pad, x_lens, y_lens
-#         return xx_pad, yy_pad
