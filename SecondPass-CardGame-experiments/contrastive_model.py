@@ -300,71 +300,16 @@ class EncoderPredictor(nn.Module):
         # shape(b, l, embed_dim)
         inp_embed = self.inp_key_layer(X)
 
-        if self.vocab_by_property:
-            # shape(batch_size=b, inp_len)
-            inp_pads = (X == self.PAD).int()
-            # shape(b, l, d_model) 
-            repr = self.key_encoder(inp_embed, inp_pads)
-            # shape(b, vec_repr)
-            return self.key_projection(repr[:, self.repr_pos, :])
-        else:
-            # shape(size(support), vec_repr)
-            return self.key_projection(inp_embed.squeeze(1))
+        # shape(size(support), vec_repr)
+        return self.key_projection(inp_embed.squeeze(1))
 
     def encode_all_keys(self):
         X = self.all_keys
         # shape(size(support), l=inp_len, embed_dim)
         inp_embed = self.inp_key_layer(X)
         
-        if self.vocab_by_property:
-            inp_pads = torch.zeros(X.shape).type_as(X).int() # NOTE only works if keys have equal length
-            # shape(size(support), l, d_model)
-            repr = self.key_encoder(inp_embed, inp_pads)
-            # shape(size(support), vec_repr)
-            return self.key_projection(repr[:, self.repr_pos, :])
-        else:
-            # shape(size(support), vec_repr)
-            return self.key_projection(inp_embed.squeeze(1))
-
-    # def encode_key(self, X):
-    #     '''
-    #     X: (batch_size=b, l)
-    #     '''
-    #     b, l = X.shape 
-    #     # shape(b, l, embed_dim)
-    #     inp_embed = self.inp_key_layer(X)
-    #     assert inp_embed.shape == (b, l, self.d_model)
-    #     if not self.key_encoder:
-    #         assert inp_embed.shape == (b, 1, self.d_model)
-    #         # shape(b, embed_dim)
-    #         return inp_embed.squeeze(1)
-    #     # shape(batch_size=b, inp_len)
-    #     inp_pads = (X == self.PAD).int()
-    #     # shape(b, l, d_model) 
-    #     repr = self.key_encoder(inp_embed, inp_pads)
-    #     # shape(b, vec_repr)
-    #     return self.key_projection(repr[:, self.repr_pos, :])
-
-    # def encode_all_keys(self):
-
-    #     if not self.key_encoder:
-    #         # shape(size(support), embed_dim)
-    #         all_embed = self.inp_key_layer.scaled_embed.embedding.weight
-    #         assert all_embed.requires_grad == True
-    #         assert all_embed.shape == (self.key_support_size, self.d_model)
-    #         # shape(size(support), vec_repr)
-    #         return self.key_projection(all_embed)
-    #     else:
-    #         X = self.all_keys
-    #         # shape(size(support), l=num attributes+1, embed_dim)
-    #         inp_embed = self.inp_key_layer(X)
-    #         assert inp_embed.shape == (self.key_support_size, self.num_attributes+1, self.d_model)
-    #         inp_pads = torch.zeros(X.shape).type_as(X).int()
-    #         # shape(size(support), l, d_model)
-    #         repr = self.key_encoder(inp_embed, inp_pads)
-    #         assert repr.shape == (self.key_support_size, self.num_attributes+1, self.d_model)
-    #         # shape(size(support), vec_repr)
-    #         return self.key_projection(repr[:, self.repr_pos, :])
+        # shape(size(support), vec_repr)
+        return self.key_projection(inp_embed.squeeze(1))
 
 
 def make_classifier(scale_down_factor, vec_repr, non_linearity_class):

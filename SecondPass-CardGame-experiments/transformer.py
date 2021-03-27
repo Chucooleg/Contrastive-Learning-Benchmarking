@@ -134,7 +134,7 @@ class EncoderLayer(nn.Module):
 
 
 ########################################################
-# class Encoder(nn.Module):
+# class EncoderPreLayerNorm(nn.Module):
 #     '''Pre LayerNorm'''
 
 #     def __init__(self, encoder_layer, N_layers, d_model, mask_forward):
@@ -173,7 +173,7 @@ class EncoderLayer(nn.Module):
 # # torch.isinf(inp_embedding).any() or torch.isnan(inp_embedding).any()
 
 # ########################################################
-# class EncoderLayer(nn.Module):
+# class EncoderLayerPreLayerNorm(nn.Module):
 #     '''
 #     single layer encoder, 
 #     Pre LayerNorm
@@ -211,7 +211,7 @@ class EncoderLayer(nn.Module):
         
 #         return z_l, self_attn_wts
 
-# # torch.isinf(z_lm1).any() or torch.isnan(z_lm1).any()
+# torch.isinf(z_lm1).any() or torch.isnan(z_lm1).any()
 
 
 ########################################################
@@ -317,13 +317,10 @@ class MultiHeadAttention(nn.Module):
         # XQ shape(b, h, n, d_k)
         # YK shape(b, h, m, d_k)
         # YV shape(b, h, m, d_k)
-        try:
-            XQ, YK, YV = [
-                        W(vals).reshape(b, -1, self.h, self.d_k)
-                        .transpose(1, 2) 
-                        for (W, vals) in zip(self.projections_QKVO[:3], (X, Y, Y))]
-        except:
-            import pdb; pdb.set_trace()
+        XQ, YK, YV = [
+                    W(vals).reshape(b, -1, self.h, self.d_k)
+                    .transpose(1, 2) 
+                    for (W, vals) in zip(self.projections_QKVO[:3], (X, Y, Y))]
 
         # attention weighted values, attention weights
         # shape (b, n, h, d_k), (b, h, n, m)

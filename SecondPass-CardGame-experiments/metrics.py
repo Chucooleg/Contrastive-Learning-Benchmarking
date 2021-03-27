@@ -36,7 +36,7 @@ class InfoCELoss(nn.Module):
             print('sum_loss_per_col=',sum_loss_per_col)
 
         loss = (sum_loss_per_row + sum_loss_per_col) * 0.5
-        return loss, None
+        return loss
 
 
 ############################################################
@@ -49,7 +49,7 @@ class CELoss(nn.Module):
         super().__init__()
         self.key_support_size = key_support_size
         self.temperature_const = temperature_const
-        self.CE_loss = nn.CrossEntropyLoss(reduction='none')
+        self.CE_loss = nn.CrossEntropyLoss(reduction='sum')
 
     def forward(self, logits, X_keyId, debug=False):
         '''
@@ -62,12 +62,12 @@ class CELoss(nn.Module):
         logits /= self.temperature_const
         labels = X_keyId.squeeze(-1)
         # shape (b,)
-        loss_full = self.CE_loss(logits, labels)
+        loss = self.CE_loss(logits, labels)
 
         if debug:
-            print('loss_full=',loss_full)
+            print('loss=',loss)
 
-        return torch.sum(loss_full), loss_full
+        return loss
 
 
 ############################################################
@@ -162,6 +162,7 @@ class ContrastiveDebugMetrics(nn.Module):
         b = scores.shape[0]
         
         zero = lambda: torch.tensor(0.).type_as(scores)
+        topk_pred_overlap_overall_ratio = 0.
         topk_pred_overlap_count = defaultdict(float)
         topk_pred_above_threshold_count = defaultdict(zero)
         pred_above_threshold_count = defaultdict(zero)
@@ -182,9 +183,12 @@ class ContrastiveDebugMetrics(nn.Module):
             # (k, )
             pred_topk_vals, pred_topk_idxs = torch.topk(scores[b_i], k=k)
 
-            # how many of the top k predictions are in ground-truth?
+            # how many of the top k predictions are in ground-truth? (specific to k)
             topk_p_overlap_ct = len(np.intersect1d(gt_idxs.cpu().numpy(), pred_topk_idxs.cpu().numpy()))
             topk_pred_overlap_count[k] += topk_p_overlap_ct
+
+            # how many of the top k predictions are in ground-truth? (consider all k)
+            topk_pred_overlap_overall_ratio += topk_p_overlap_ct * 1.0 / k
 
             # how many of the top k predictions are above threshold?
             topk_p_abv_thresh_ct = torch.sum(pred_topk_vals >= threshold)#.item() 
@@ -204,7 +208,7 @@ class ContrastiveDebugMetrics(nn.Module):
             not_gt_scores = torch.mean(scores[b_i][not_gt_idx])#.item()
             not_gt_pred_scores[k] += not_gt_scores
         
-        
+        topk_pred_overlap_overall_ratio = {'topK_overall_overlap_ratio': topk_pred_overlap_overall_ratio / b}
         topk_pred_overlap_count = {f'gt{k};top{k}_overlap_count':topk_pred_overlap_count[k]/topk_pred_count[k] for k in topk_pred_overlap_count}
         topk_pred_above_threshold_count = {f'gt{k};top{k}_pred_above_threshold_count':topk_pred_above_threshold_count[k]/topk_pred_count[k] for k in topk_pred_above_threshold_count}
         pred_above_threshold_count = {f'gt{k};total_pred_above_threshold_count':pred_above_threshold_count[k]/topk_pred_count[k] for k in pred_above_threshold_count}
@@ -212,7 +216,10 @@ class ContrastiveDebugMetrics(nn.Module):
         gt_pred_scores = {f'gt{k};gt_pred_scores':gt_pred_scores[k]/topk_pred_count[k] for k in gt_pred_scores}
         not_gt_pred_scores = {f'gt{k};not_gt_pred_scores':not_gt_pred_scores[k]/topk_pred_count[k] for k in not_gt_pred_scores}
 
-        return {**topk_pred_overlap_count, **topk_pred_above_threshold_count, **pred_above_threshold_count, **gt_logits_above_threshold_count, **gt_pred_scores, **not_gt_pred_scores}
+        return {
+            **topk_pred_overlap_count, **topk_pred_above_threshold_count, **pred_above_threshold_count, **gt_logits_above_threshold_count, **gt_pred_scores, **not_gt_pred_scores,
+            **topk_pred_overlap_overall_ratio,
+            }
             
 
 class GenerativeDebugMetrics(ContrastiveDebugMetrics):
