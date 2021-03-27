@@ -246,12 +246,6 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
             all_query_and_keys
         )
 
-        # q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(
-        #     num_attributes=num_attributes, 
-        #     num_attr_vals=num_attr_vals, 
-        #     card2idx_lookup=card2idx_lookup, 
-        # )
-
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)
         
