@@ -7,7 +7,7 @@
 
     "d_model": 512,
     "embed_dropout": 0.0,
-    "vec_repr": 4,
+    "vec_repr": 512,
 
     "model": "contrastive",
 
@@ -26,7 +26,7 @@
     "dotproduct_bottleneck": true,
     "normalize_dotproduct": true,
     "contrastive_use_infoNCE": true,
-    "loss_temperature_const": 1.0,
+    "loss_temperature_const": 1.2,
     "loss_smoothing_const": 0.1,
     "nonlinear_classifier_scale_down_factor": [1,1,1],
 

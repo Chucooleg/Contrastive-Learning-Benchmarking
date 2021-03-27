@@ -5,9 +5,8 @@ import random
 
 
 from dataraw_sampling import (
-    sample_one_training_datapoint, 
-    construct_card_idx_lookup,
-    construct_all_query_and_keys
+    sample_one_training_datapoint,
+    construct_cardpair_answer_lookup,
     )
 
 # Delete later
@@ -27,7 +26,6 @@ class GameDatasetFromDataPoints(Dataset):
         self.debug = hparams['debug']
         self.num_attributes = hparams['num_attributes']
         self.num_attr_vals = hparams['num_attr_vals']
-        self.nest_depth_int = hparams['nest_depth_int']
         self.key_support_size = hparams['key_support_size']
         self.vocab_by_property = hparams['vocab_by_property']
         self.OpenP = hparams['(']
@@ -46,14 +44,11 @@ class GameDatasetFromDataPoints(Dataset):
 
 
 class GameDatasetTrainDataset(GameDatasetFromDataPoints):
-    '''On the fly WildCard SET sample from all'''
+    '''On the fly Simple SET from answer lookup'''
     
     def __init__(self, hparams):
         super().__init__(hparams)
         self.split = 'train'
-
-        self.card2idx_lookup, _ = construct_card_idx_lookup(
-            self.num_attributes, self.num_attr_vals)
 
         self.symbol_vocab_token_lookup = {
             '(': hparams['('],
@@ -69,9 +64,8 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
         }
 
         self.batch_size = hparams['batch_size']
-        card2idx_lookup, idx2card_lookup = construct_card_idx_lookup(self.num_attributes, self.num_attr_vals)
-        self.all_query_and_keys = construct_all_query_and_keys(self.num_attributes, self.num_attr_vals, card2idx_lookup, idx2card_lookup)
-
+        self.num_keys = hparams['num_attr_vals']**hparams['num_attributes']
+        self.cardpair_answer_lookup = construct_cardpair_answer_lookup(self.num_attributes, self.num_attr_vals)
         
     def __len__(self):
         return self.batch_size * 2
@@ -79,9 +73,7 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
     def __getitem__(self, idx):
 
         # list, list if vocab_by_property else int 
-        y_vocab_tokens, x_vocab_tokens, gt_idxs = sample_one_training_datapoint(
-            self.all_query_and_keys
-        )
+        y_vocab_tokens, x_vocab_tokens, gt_idxs = sample_one_training_datapoint(self.num_keys, self.cardpair_answer_lookup, return_gt=True)
 
         # list of integers
         gt_binary_tensor = self.make_gt_binary(gt_idxs)
@@ -96,18 +88,11 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
                 gt_binary_tensor, # all gt key ids
             )
         else:
-            if self.vocab_by_property:
-                return (
-                    torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
-                    torch.tensor([self.SOS] + x_vocab_tokens + [self.EOS]).long(), # X key
-                    gt_binary_tensor, # all gt key ids
-                )    
-            else:
-                return (
-                    torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
-                    torch.tensor(x_vocab_tokens).long(), # X key
-                    gt_binary_tensor, # all gt key ids
-                )
+            return (
+                torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # X query
+                torch.tensor(x_vocab_tokens).long(), # X key
+                gt_binary_tensor, # all gt key ids
+            )
 
 
 class GameDatasetValDataset(GameDatasetFromDataPoints):
@@ -160,10 +145,7 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
     
     def __init__(self, hparams, raw_data):
         super().__init__(hparams)
-        if hparams['mode'] == 'test_marginal':
-            self.split = 'test_marginal'
-        else:
-            self.split = 'test'
+        self.split = 'test'
         self.raw_data = raw_data
 
         # PLH

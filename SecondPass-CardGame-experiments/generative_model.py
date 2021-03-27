@@ -95,7 +95,7 @@ class DecoderPredictor(nn.Module):
         
         self.softmax = nn.Softmax(dim=-1)
 
-        self.pred_key_pos = 3
+        self.pred_key_pos = 3 # <SOS> c1 c2 <SEP> K, predict at <SEP>
         self.key_projection = nn.Linear(self.d_model, self.key_support_size)
 
 

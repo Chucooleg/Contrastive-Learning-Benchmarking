@@ -107,7 +107,7 @@ def construct_cardpair_answer_lookup(num_attributes, num_attr_vals, debug=False)
 
 ####################################################################################
 
-def sample_one_training_datapoint(num_keys, num_attributes, num_attr_vals, cardpair_answer_lookup, symbol_vocab_token_lookup, return_gt=False):
+def sample_one_training_datapoint(num_keys, cardpair_answer_lookup, return_gt=False):
     '''Simple SET'''
     card1_idx = np.random.choice(num_keys)
     card2_idx = np.random.choice(num_keys)
@@ -156,7 +156,7 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     
     max_len_q = 2
     for i in tqdm(range(N)):
-        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_keys, num_attributes, num_attr_vals, cardpair_answer_lookup, symbol_vocab_token_lookup, return_gt=True)
+        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_keys, cardpair_answer_lookup, return_gt=True)
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)
@@ -167,11 +167,7 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     data = {
         'num_attributes':num_attributes,
         'num_attr_vals':num_attr_vals,
-        'nest_depth_int': None,
         'key_support_size': num_keys,
-        'multiple_OR_sets_bool': None,
-
-        'query_length_multiplier': None,
         'max_len_q': max_len_q,
         'len_k': 1,
         
