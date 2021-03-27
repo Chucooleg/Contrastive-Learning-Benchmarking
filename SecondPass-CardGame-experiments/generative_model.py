@@ -92,36 +92,22 @@ class DecoderPredictor(nn.Module):
         self.vocab_by_property = vocab_by_property
         self.len_k = len_k
         self.debug = debug
-        if self.querykey_decoder:
-            self.setup_all_keys()
-        self.logsoftmax = nn.LogSoftmax(dim=-1)
+        
+        self.softmax = nn.Softmax(dim=-1)
 
-    def setup_all_keys(self):
+        self.pred_key_pos = 3
+        self.key_projection = nn.Linear(self.d_model, self.key_support_size)
 
-        if self.vocab_by_property:
-            # by key index
-            all_keys = np.empty((self.key_support_size, self.len_k))
-
-            for key_idx in range(self.key_support_size):
-                key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
-                all_keys[key_idx, :] = key_properties
-        else:
-            all_keys = np.arange(self.key_support_size).reshape(-1, 1)
-
-        # (key_support_size, num_attributes)
-        self.register_buffer(
-            name='all_keys',
-            tensor= torch.tensor(all_keys, dtype=torch.long)
-        )
 
     def forward(self, X_querykey, from_support, debug=False):
-        # expects querykey_logits, query_allkey_logits, X_query_allkeys
+        # shape (b, key_support_size)
+        key_logits = self.forward_minibatch(X_querykey, debug=debug)
+
         if from_support:
-            log_pxy = self.forward_norm_support(X_querykey, debug=debug)
-            return None, log_pxy
+            py_giv_x = self.softmax(key_logits)
+            return key_logits, py_giv_x
         else:
-            querykey_logits = self.forward_minibatch(X_querykey, debug=debug)
-            return querykey_logits, None
+            return key_logits, None
 
     def forward_minibatch(self, X_querykey, debug=False):
         '''
@@ -131,58 +117,12 @@ class DecoderPredictor(nn.Module):
         b, inp_len = X_querykey.shape
         # shape(b, inp_len, d_model)
         decoder_out = self.decode_querykey(X_querykey)
-        # shape (b, inp_len, V)
-        out_logits = self.classifier(decoder_out)
-        assert out_logits.shape == (b, inp_len, self.vocab_size)
-        return out_logits
-
-    def forward_norm_support(self, X_querykey, debug=False):
-
-        b, inp_len = X_querykey.shape
-        log_pxy = torch.empty(b, self.key_support_size).type_as(X_querykey).float()
-
-        SEP_poses = torch.nonzero(X_querykey == self.SEP)[:,1]
-        EOS_poses = torch.nonzero(X_querykey == self.EOS)[:,1]
-
-        for b_i in range(b):
-            SEP_pos, EOS_pos  = SEP_poses[b_i], EOS_poses[b_i]
-            # shape(self.key_support_size, inp_len)     
-            X_query_allkeys = X_querykey[b_i].repeat(self.key_support_size, 1)
-            X_query_allkeys[:,SEP_pos+1:EOS_pos] = self.all_keys
-            # shape(self.key_support_size, inp_len, V)
-            query_allkey_logits = self.forward_minibatch(X_query_allkeys, debug=debug)
-
-            # shape (key_support_size,)
-            log_pxy[b_i] = self.score_one_example(X_query_allkeys, query_allkey_logits)
-
-        return log_pxy
-
-    def score_one_example(self, X_query_allkeys, query_allkey_logits):
-        '''
-        X_query_allkeys: (support_size, inp_len) # include <SOS>, <SEP> and <EOS>
-        query_allkey_logits: (key_support_size, inp_len, V)
-        '''
-        X_query_allkeys = X_query_allkeys[:,1:]
-        query_allkey_logits = query_allkey_logits[:,:-1,:]
-
-        # shape (key_support_size, inp_len, V)
-        log_probs_over_vocab = self.logsoftmax(query_allkey_logits)       
-        
-        # shape (key_support_size, inp_len)
-        log_probs_sentence = torch.gather(
-            input=log_probs_over_vocab, dim=-1, index=X_query_allkeys.unsqueeze(-1)).squeeze(-1)
-
-        # zero out PADs
-        # shape (key_support_size, inp_len)
-        pad_mask = (X_query_allkeys != self.PAD).float()
-        # shape (key_support_size, inp_len)
-        log_probs_sentence_masked = log_probs_sentence * pad_mask
-
-        # shape (key_support_size,)
-        log_pxy = torch.sum(log_probs_sentence_masked, dim=-1)
-
-        # shape (key_support_size,)
-        return log_pxy    
+        # shape(b, d_model)
+        decode_key_out = decoder_out[:,self.pred_key_pos,:] 
+        # shape(b, key_support_size)
+        key_logits = self.key_projection(decode_key_out)
+        assert key_logits.shape == (b, self.key_support_size)
+        return key_logits
 
     def decode_querykey(self, X_querykey):
         '''

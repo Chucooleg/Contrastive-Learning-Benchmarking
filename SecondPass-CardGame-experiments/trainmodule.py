@@ -110,15 +110,9 @@ class GenerativeTrainModule(TrainModule):
         self.logsoftmax = nn.LogSoftmax(dim=-1)
         self.softmax = nn.Softmax(dim=-1)
         
-        self.train_loss_criterion = LabelSmoothedLoss(
-            K=self.vocab_size, 
-            padding_idx=hparams['PAD'], 
-            smoothing_const=hparams['loss_smoothing_const'], 
-            temperature_const=hparams['loss_temperature_const'])
-
-        self.CE_loss_criterion = self.CE_criterion = CELoss(
+        self.loss_criterion = CELoss(
                 key_support_size=self.hparams['key_support_size'],
-                temperature_const=self.hparams['loss_temperature_const']) 
+                temperature_const=self.hparams['loss_temperature_const'])  
 
         self.batch_size = self.hparams['batch_size']
         self.SOS = self.hparams['SOS']
@@ -133,76 +127,6 @@ class GenerativeTrainModule(TrainModule):
 
     ###################################################
 
-    # def score_sequences(self, X_query_allkeys, query_allkey_logits):
-    #     '''
-    #     X_query_allkeys: (b, support_size, inp_len) # include <SOS>, <SEP> and <EOS>
-    #     query_allkey_logits: (b, key_support_size, inp_len, V)
-    #     '''
-    #     X_query_allkeys = X_query_allkeys[:,:,1:]
-    #     query_allkey_logits = query_allkey_logits[:,:,:-1,:]
-
-    #     # shape (b, key_support_size, inp_len, V)
-    #     log_probs_over_vocab = self.logsoftmax(query_allkey_logits)
-
-    #     # shape (b, key_support_size, inp_len)
-    #     log_probs_sentence = torch.gather(
-    #         input=log_probs_over_vocab, dim=-1, index=X_query_allkeys.unsqueeze(-1)).squeeze(-1)
-
-    #     # zero out PADs
-    #     # shape (b, key_support_size, inp_len)
-    #     pad_mask = (X_query_allkeys != self.PAD).float()
-    #     # shape (b, key_support_size, inp_len)
-    #     log_probs_sentence_masked = log_probs_sentence * pad_mask
-
-    #     # shape (b, key_support_size)
-    #     log_pxy = torch.sum(log_probs_sentence_masked, dim=-1)
-
-    #     # shape (b, key_support_size)
-    #     return log_pxy
-
-    # def compute_argmax_accuracy(self, X_querykey, querykey_logits):
-    #     '''
-    #     Debug Simple Shatter only
-    #     X_querykey: (b, inp_len) # include <SOS>, <SEP> and <EOS>
-    #     querykey_logits: (b, inp_len, V)
-    #     '''
-    #     b, inp_len = X_querykey.shape
-    #     key_poses = torch.nonzero(X_querykey == self.SEP)[:, 1] # <SEP> pso should predict key
-    #     accuracies = []
-    #     # is the argmax key in query?
-    #     for b_i in range(b):
-    #         key_pos = key_poses[b_i]
-    #         query_tokens = X_querykey[b_i, 1:key_pos]
-    #         max_logit_pos = torch.argmax(querykey_logits[b_i][key_pos])
-    #         acc = max_logit_pos in query_tokens
-    #         accuracies.append(acc)
-    #     return sum(accuracies)/len(accuracies)
-
-    # def compute_topK_accuracy(self, X_querykey, querykey_logits):
-    #     '''
-    #     Debug Simple Shatter only
-    #     X_querykey: (b, inp_len) # include <SOS>, <SEP> and <EOS>
-    #     querykey_logits: (b, inp_len, V)
-    #     '''
-    #     b, inp_len = X_querykey.shape
-    #     key_poses = torch.nonzero(X_querykey == self.SEP)[:, 1] # <SEP> pos should predict key
-    #     accuracies = []
-    #     # Are the top keys in query?
-    #     for b_i in range(b):
-    #         key_pos = key_poses[b_i]
-    #         query_tokens = X_querykey[b_i, 1:key_pos]
-    #         logits = querykey_logits[b_i][key_pos]
-    #         # set k to be number of gt hits
-    #         topk_logit_poses = torch.topk(logits, k=query_tokens.shape[0])[1]
-    #         acc = 0
-    #         for pos in topk_logit_poses:
-    #             if pos in query_tokens:
-    #                 acc += 1
-    #         acc /= len(topk_logit_poses)
-    #         accuracies.append(acc)
-    #     return sum(accuracies)/len(accuracies)
-
-    ###################################################
     def forward(self, X_querykey, gt_binary, val_bool, full_test_bool=False, debug=False):
         '''
         X_querykey: (b, inp_len) # include <SOS>, <SEP> and <EOS>
@@ -212,41 +136,23 @@ class GenerativeTrainModule(TrainModule):
         '''
         b, len_qk = X_querykey.shape
 
-        # querykey_logits: (b, inp_len, V)
-        # query_allkey_logits: (b, key_support_size, inp_len, V)
-        # X_query_allkeys: (b, key_support_size, inp_len)
-        querykey_logits, log_pxy = self.model(
+        # (b, key_support_size), (b, key_support_size)
+        key_logits, py_giv_x = self.model(
             X_querykey=X_querykey, from_support=val_bool, debug=debug
         )
 
-        if val_bool:
-            assert log_pxy.shape == (b, self.key_support_size)
-            assert querykey_logits is None
-        else:
-            assert querykey_logits.shape == (b, len_qk, self.vocab_size) 
-            assert log_pxy is None
-
         # scalar
-        if val_bool:
-            loss = self.train_loss_criterion(
-                    # logits=querykey_logits[:,:-1,:], 
-                    # labels=X_querykey[:, 1:], 
-                    logits=querykey_logits[:,3,:], # predc1, predc2, predSEP, predK
-                    labels=X_querykey[:, 4], # <SOS> c1 c2 <SEP> k
-                    debug=debug)
-        else:
-            loss = self.CE_loss_criterion(
-                    logits=querykey_logits[:,3,:],
-                    X_keyId=X_querykey[:, 4],
-                    debug=debug
-            )
+        loss = self.loss_criterion(
+                logits=key_logits,
+                X_keyId=X_querykey[:, 4], # <SOS> c1 c2 <SEP> k
+                debug=debug)
 
         # shape (b,support)
-        probs = self.softmax(log_pxy) if val_bool else None
+        probs = py_giv_x if val_bool else None
 
         # dict
         metrics = self.metrics(
-                scores=self.softmax(probs), # shape (b,support)
+                scores=probs, # shape (b,support)
                 threshold=1.0/self.hparams['key_support_size'],
                 gt_binary=gt_binary,
                 debug=debug, 
@@ -261,7 +167,7 @@ class GenerativeTrainModule(TrainModule):
         ) if val_bool else None
 
         metrics = {**metrics, **debug_metrics} if val_bool else None
-        return log_pxy, loss, metrics
+        return py_giv_x, loss, metrics
 
     ###################################################
 
@@ -272,36 +178,24 @@ class GenerativeTrainModule(TrainModule):
         # gt_binary = None
 
         # scalar
-        _, label_smoothed_loss, _ = self(
+        _, loss, metrics = self(
             X_querykey,
             gt_binary, 
-            val_bool=False, 
+            val_bool= True if ((self.current_epoch+1) % self.val_every_n_epoch == 0) else False, 
             debug=self.debug
         )
-
-        with torch.no_grad():
-            if (self.current_epoch+1) % self.val_every_n_epoch == 0:
-                _, crossent_loss, tr_metrics = self(
-                    X_querykey,
-                    gt_binary, 
-                    val_bool=True, 
-                    debug=self.debug
-                )
-            else:
-                crossent_loss = None
-                tr_metrics = None
 
         lr = self.optimizers().param_groups[0]['lr']
 
         # log
         step_metrics = {
-            **{'train_loss': label_smoothed_loss, 'train_loss_per_example': label_smoothed_loss/X_querykey.shape[0], 'train_batch_size':X_querykey.shape[0], 'learning_rate': lr}, 
-            **({'train_CE_loss': crossent_loss} if crossent_loss else {}),
-            **({'train_'+m:tr_metrics[m] for m in tr_metrics} if tr_metrics else {}),
+            **{'train_loss': loss, 'train_batch_size':X_querykey.shape[0], 'learning_rate': lr}, 
+            **({'train_'+m:metrics[m] for m in metrics} if metrics else {}),
             }
+
         self.log_metrics(step_metrics)
         # for backprop
-        return label_smoothed_loss
+        return loss
 
     def validation_step(self, batch, batch_nb):
 
@@ -311,14 +205,8 @@ class GenerativeTrainModule(TrainModule):
         # (b, inp_len), (b, support size)
         X_querykey, gt_binary = batch
 
-        _, label_smoothed_loss, _ = self(
-            X_querykey,
-            gt_binary,
-            val_bool=False, 
-            debug=self.debug
-        )
-
-        _, crossent_loss, metrics = self(
+        # CE loss (both in gen and con)
+        _, loss, metrics = self(
             X_querykey,
             gt_binary, 
             val_bool=True, 
@@ -326,7 +214,7 @@ class GenerativeTrainModule(TrainModule):
         )
         
         # log 
-        step_metrics = {**{'val_loss': label_smoothed_loss, 'val_loss_per_example': label_smoothed_loss/X_querykey.shape[0], 'val_CE_loss': crossent_loss}, **{'val_'+m:metrics[m] for m in metrics}}
+        step_metrics = {**{'val_loss': loss, 'val_loss_per_example': loss/X_querykey.shape[0]}, **{'val_'+m:metrics[m] for m in metrics}}
         devices_max_memory_alloc = self.get_max_memory_alloc()
         for device, val in devices_max_memory_alloc.items():
             step_metrics[f'step_max_memory_alloc_cuda:{device}'] = val
@@ -341,7 +229,7 @@ class GenerativeTrainModule(TrainModule):
         
         # compute scores for all keys
         # shape(b, key_support_size), scalar, dictionary
-        log_pxy, crossent_loss, metrics = self(
+        log_pxy, loss, metrics = self(
             X_querykey,
             gt_binary, 
             val_bool=True, 
@@ -349,7 +237,7 @@ class GenerativeTrainModule(TrainModule):
             debug=self.debug)
                 
         # log
-        step_metrics = {**({'test_CE_loss':crossent_loss}), **{'test_'+m:metrics[m] for m in metrics}}
+        step_metrics = {**({'test_loss':loss}), **{'test_'+m:metrics[m] for m in metrics}}
         self.log_metrics(step_metrics)
         step_metrics = {**step_metrics, **({'batch_size':X_querykey.shape[0]})}
         return step_metrics 
