@@ -1,5 +1,5 @@
 '''
-dataraw_sampling_SimpleSET_idx_wildcard
+dataraw_sampling_SimpleSET_idx_wildcard_expand
 '''
 
 
@@ -95,6 +95,16 @@ def draw_cardpair_props(num_attributes, num_attr_vals):
 
     return card1_prop, card2_prop, keys_prop
 
+def draw_N_cardpairs(num_attributes, num_attr_vals, N):
+    # union answers from N pairs
+    all_key_subsets = []  # list of tuples, each one card
+    all_query_pairs = []
+    for i in range(N):
+        card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
+        all_query_pairs += [card1_prop, card2_prop]
+        all_key_subsets += keys_prop
+    return all_query_pairs, set(all_key_subsets), len(all_key_subsets)    
+
 def construct_card_idx_lookup(num_attributes, num_attr_vals):
     
     all_card_props = list(itertools.product(*[list(range(4)) for _ in range(num_attributes)]))
@@ -136,72 +146,52 @@ def construct_all_query_and_keys(num_attributes, num_attr_vals, card2idx_lookup,
     return all_query_and_keys
 ####################################################################################
 
-def sample_one_training_datapoint_from_marginal(num_attributes, num_attr_vals, card2idx_lookup, sampler_weights):
+def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup):
     '''Wrong sampling props for training.'''
 
-    card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
+    # card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
+    query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=3)
 
-    card1_idx = card2idx_lookup[tuple(card1_prop)]
-    card2_idx = card2idx_lookup[tuple(card2_prop)]
+    # 6 tokens
+    q_vocab_tokens = [card2idx_lookup[tuple(qp)] for qp in query_props]
 
-    q_vocab_tokens = [card1_idx, card2_idx]
-
-    gt_ks_idx = [card2idx_lookup[kp] for kp in keys_prop]
-    k_vocab_tokens = random.choice(gt_ks_idx)
+    gt_ks_idx = [card2idx_lookup[kp] for kp in key_props]
 
     # list, list, list
-    return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
+    return q_vocab_tokens, None, gt_ks_idx
 
 
-def sample_one_training_datapoint_rejection_sampling(num_attributes, num_attr_vals, card2idx_lookup):
+def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup):
     '''Rejection Sampling'''
 
     success = False 
 
     while not success:
 
-        card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
-        if random.random() <= (len(keys_prop) *1.0 / (num_attr_vals**num_attributes)):
+        query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=3)
+        if random.random() <= (len(ans_subset) *1.0 / (num_attr_vals**num_attributes)):
             success = True
 
-    card1_idx = card2idx_lookup[tuple(card1_prop)]
-    card2_idx = card2idx_lookup[tuple(card2_prop)]
+    # 6 tokens
+    q_vocab_tokens = [card2idx_lookup[tuple(qp)] for qp in query_props]
 
-    q_vocab_tokens = [card1_idx, card2_idx]
-
-    gt_ks_idx = [card2idx_lookup[kp] for kp in keys_prop]
+    gt_ks_idx = [card2idx_lookup[kp] for kp in key_props]
     k_vocab_tokens = random.choice(gt_ks_idx)
 
     # list, list, list
     return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
 
 
-def sample_one_training_datapoint(all_query_and_keys):
-    '''from pxy'''
+# def sample_one_training_datapoint(all_query_and_keys):
+#     '''from pxy'''
 
-    idx = np.random.choice(len(all_query_and_keys))
-    q_vocab_tokens = all_query_and_keys[idx][0]
-    k_vocab_tokens = all_query_and_keys[idx][1]
-    gt_ks_idx = all_query_and_keys[idx][2]
+#     idx = np.random.choice(len(all_query_and_keys))
+#     q_vocab_tokens = all_query_and_keys[idx][0]
+#     k_vocab_tokens = all_query_and_keys[idx][1]
+#     gt_ks_idx = all_query_and_keys[idx][2]
 
-    # list, list, list
-    return q_vocab_tokens, k_vocab_tokens, gt_ks_idx
-
-
-def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup):
-    '''from p marginal x only'''
-    
-    card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
-
-    card1_idx = card2idx_lookup[tuple(card1_prop)]
-    card2_idx = card2idx_lookup[tuple(card2_prop)]
-
-    q_vocab_tokens = [card1_idx, card2_idx]
-
-    gt_ks_idx = [card2idx_lookup[kp] for kp in keys_prop]
-
-    # list, list, list
-    return q_vocab_tokens, None, gt_ks_idx
+#     # list, list, list
+#     return q_vocab_tokens, k_vocab_tokens, gt_ks_idx
 
 
 def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
