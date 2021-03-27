@@ -131,7 +131,7 @@ class GenerativeTrainModule(TrainModule):
 
     ###################################################
 
-    def forward(self, X_querykey, gt_binary, val_bool, full_test_bool=False, debug=False):
+    def forward(self, X_querykey, X_key, gt_binary, val_bool, full_test_bool=False, debug=False):
         '''
         X_querykey: (b, inp_len) # include <SOS>, <SEP> and <EOS>
         gt_binary: (b, key support size)
@@ -141,7 +141,7 @@ class GenerativeTrainModule(TrainModule):
         b, len_qk = X_querykey.shape
 
         # (b, key_support_size), (b, key_support_size)
-        key_logits, py_giv_x = self.model(
+        key_logits, pred_key_poses, py_giv_x = self.model(
             X_querykey=X_querykey, from_support=val_bool, debug=debug
         )
         
@@ -154,7 +154,7 @@ class GenerativeTrainModule(TrainModule):
         else:
             loss = self.loss_criterion(
                     logits=key_logits,
-                    X_keyId=X_querykey[:, 4], # <SOS> c1 c2 <SEP> k
+                    X_keyId=X_key,
                     debug=debug)
 
         # shape (b,support)
@@ -183,13 +183,13 @@ class GenerativeTrainModule(TrainModule):
 
     def training_step(self, batch, batch_nb):
 
-        # (b, inp_len), (b, support size)
-        X_querykey, gt_binary = batch
-        # gt_binary = None
+        # (b, inp_len), (b,1), (b, support size)
+        X_querykey, X_key, gt_binary = batch
 
         # scalar
         _, ce_loss, _ = self(
             X_querykey,
+            X_key,
             gt_binary, 
             val_bool=False, 
             debug=self.debug
@@ -199,6 +199,7 @@ class GenerativeTrainModule(TrainModule):
             if ((self.current_epoch+1) % self.val_every_n_epoch == 0):
                 _, kl_loss, metrics = self(
                     X_querykey,
+                    X_key,
                     gt_binary, 
                     val_bool=True, 
                     debug=self.debug
@@ -224,12 +225,13 @@ class GenerativeTrainModule(TrainModule):
         if not self.checkpoint_updated:
             self.hack_checkpoint_dir_name()
 
-        # (b, inp_len), (b, support size)
-        X_querykey, gt_binary = batch
+        # (b, inp_len), (b, 1), (b, support size)
+        X_querykey, X_key, gt_binary = batch
 
         # CE loss 
         _, ce_loss, _ = self(
             X_querykey,
+            X_key,
             gt_binary, 
             val_bool=False, 
             debug=self.debug
@@ -238,6 +240,7 @@ class GenerativeTrainModule(TrainModule):
         # KL loss (both in gen and con)
         _, kl_loss, metrics = self(
             X_querykey,
+            X_key,
             gt_binary, 
             val_bool=True, 
             debug=self.debug
@@ -260,11 +263,13 @@ class GenerativeTrainModule(TrainModule):
 
         # (b, inp_len), (b, support size)
         X_querykey, gt_binary = batch
+        X_key = None
 
         # compute scores for all keys
         # shape(b, key_support_size), scalar, dictionary
         log_pxy, kl_loss, metrics = self(
             X_querykey,
+            X_key,
             gt_binary, 
             val_bool=True, 
             full_test_bool=True,
@@ -435,7 +440,7 @@ class ContrastiveTrainModule(TrainModule):
 
         # log 
         step_metrics = {
-            **{'val_infoNCE_loss': nce_loss, 'val_loss_infoNCE_per_example': nce_loss/X_query.shape[0]},
+            **{'val_infoNCE_loss': nce_loss, 'val_infoNCE_loss_per_example': nce_loss/X_query.shape[0]},
             **{'val_KL_loss': kl_loss, 'val_KL_loss_per_example': kl_loss/X_query.shape[0]},
             **{'val_CE_loss': ce_loss, 'val_CE_loss_per_example': ce_loss/X_query.shape[0]},
             **{'val_'+m:metrics[m] for m in metrics}

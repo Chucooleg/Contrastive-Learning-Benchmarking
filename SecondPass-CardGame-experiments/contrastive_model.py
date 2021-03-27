@@ -5,7 +5,6 @@ import numpy as np
 import math
 from collections import OrderedDict
 
-from dataraw_sampling import decode_key_to_vocab_token
 from transformer import construct_transformer_encoder, ScaledEmbedding, LearnedPositionEncoder, Positiontwise_FF, LayerNorm
 
 def construct_full_model(hparams):
@@ -152,13 +151,7 @@ class EncoderPredictor(nn.Module):
 
     def setup_all_keys(self):
 
-        if self.vocab_by_property:
-            all_keys = np.empty((self.key_support_size, 1 + self.len_k + 1)) # +1: add <SOS>, <EOS> token
-            for key_idx in range(self.key_support_size):
-                key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
-                all_keys[key_idx, :] = np.concatenate([[self.SOS], key_properties, [self.EOS]])
-        else:
-            all_keys = np.arange(self.key_support_size).reshape(-1, 1)
+        all_keys = np.arange(self.key_support_size).reshape(-1, 1)
         # register all keys (for testing)
         self.register_buffer(
             name='all_keys',

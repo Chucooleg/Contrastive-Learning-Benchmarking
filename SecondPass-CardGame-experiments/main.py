@@ -64,9 +64,6 @@ def load_hparams(args, data):
     hparams['key_support_size'] = data['key_support_size']
     hparams['num_attributes'] = data['num_attributes']
     hparams['num_attr_vals'] = data['num_attr_vals']
-    hparams['nest_depth_int'] = data['nest_depth_int']
-    hparams['query_length_multiplier'] = data['query_length_multiplier']
-    hparams['multiple_OR_sets_bool'] = data['multiple_OR_sets_bool']
     hparams['vocab_size'] = data['vocab_size']
 
     hparams['vocab_by_property'] = data['vocab_by_property']

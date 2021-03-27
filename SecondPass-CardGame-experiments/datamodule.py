@@ -26,38 +26,35 @@ class GameDataModule(pl.LightningDataModule):
         if stage == 'test' or stage is None:
             self.test = self.test_dataset
             
-    # def pad_collate_train(self, batch):
-    #     print('In collate --- batch size = ', len(batch))
-    #     if self.model_typ == 'generative':
-    #         (b_qk_tokens, b_gt_binary) = zip(*batch)
-    #         qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
-    #         return qkqk_pad, torch.stack(b_gt_binary)
-    #     else:
-    #         (b_q_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
-    #         qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
-    #         kk_pad = pad_sequence(b_k_tokens, batch_first=True, padding_value=self.PAD)
-    #         return qq_pad, kk_pad, torch.stack(b_gt_binary)
+    def pad_collate_train(self, batch):
+        if self.model_typ == 'generative':
+            (b_qk_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
+            qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
+            return qkqk_pad, torch.stack(b_k_tokens), torch.stack(b_gt_binary)
+        else:
+            (b_q_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
+            qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
+            return qq_pad, torch.stack(b_k_tokens), torch.stack(b_gt_binary)
 
-    # def pad_collate_val(self, batch):
-    #     if self.model_typ == 'generative':
-    #         (b_qk_tokens, b_gt_binary) = zip(*batch)
-    #         qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
-    #         return qkqk_pad, torch.stack(b_gt_binary)
-    #     else:
-    #         (b_q_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
-    #         qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
-    #         kk_pad = pad_sequence(b_k_tokens, batch_first=True, padding_value=self.PAD)
-    #         return qq_pad, kk_pad, torch.stack(b_gt_binary)
+    def pad_collate_val(self, batch):
+        if self.model_typ == 'generative':
+            (b_qk_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
+            qkqk_pad = pad_sequence(b_qk_tokens, batch_first=True, padding_value=self.PAD)
+            return qkqk_pad, torch.stack(b_k_tokens), torch.stack(b_gt_binary)
+        else:
+            (b_q_tokens, b_k_tokens, b_gt_binary) = zip(*batch)
+            qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
+            return qq_pad, torch.stack(b_k_tokens), torch.stack(b_gt_binary)
 
-    # def pad_collate_test(self, batch):
-    #     (b_q_tokens, b_gt_binary) = zip(*batch)
-    #     qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
-    #     return qq_pad, torch.stack(b_gt_binary)
+    def pad_collate_test(self, batch):
+        (b_q_tokens, b_gt_binary) = zip(*batch)
+        qq_pad = pad_sequence(b_q_tokens, batch_first=True, padding_value=self.PAD)
+        return qq_pad, torch.stack(b_gt_binary)
 
     def train_dataloader(self):
         train_loader = DataLoader(
             self.train, batch_size=self.batch_size, shuffle=True,
-            # collate_fn=self.pad_collate_train, 
+            collate_fn=self.pad_collate_train, 
             # num_workers=8, pin_memory=True,
         )
         return train_loader
@@ -65,7 +62,7 @@ class GameDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         val_loader = DataLoader(
             self.val, batch_size=self.batch_size, shuffle=False,
-            # collate_fn=self.pad_collate_val,
+            collate_fn=self.pad_collate_val,
             # num_workers=8, pin_memory=True,
         )
         return val_loader
@@ -73,7 +70,7 @@ class GameDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         test_loader = DataLoader(
             self.test, batch_size=self.batch_size, shuffle=False,
-            # collate_fn=self.pad_collate_test,
+            collate_fn=self.pad_collate_test,
             # num_workers=8, pin_memory=True,
         )
         return test_loader

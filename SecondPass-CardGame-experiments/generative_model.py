@@ -5,7 +5,6 @@ import numpy as np
 import math
 from collections import OrderedDict
 
-from dataraw_sampling import decode_key_to_vocab_token
 from transformer import construct_transformer_decoder, ScaledEmbedding, LearnedPositionEncoder
 
 
@@ -95,19 +94,37 @@ class DecoderPredictor(nn.Module):
         
         self.softmax = nn.Softmax(dim=-1)
 
-        self.pred_key_pos = 3
+        # self.pred_key_pos = 3
         self.key_projection = nn.Linear(self.d_model, self.key_support_size)
 
 
     def forward(self, X_querykey, from_support, debug=False):
         # shape (b, key_support_size)
-        key_logits = self.forward_minibatch(X_querykey, debug=debug)
+        key_logits, pred_key_poses = self.forward_minibatch(X_querykey, debug=debug)
 
         if from_support:
             py_giv_x = self.softmax(key_logits)
-            return key_logits, py_giv_x
+            return key_logits, pred_key_poses, py_giv_x
         else:
-            return key_logits, None
+            return key_logits, pred_key_poses, None
+
+    def select_decode_key_out(self, decode_out, X_querykey):
+        '''
+        decode_key_out: shape(b, inp_len, d_model)
+        X_querykey: shape(b, len_q),  includes <SOS>, <SEP> and <EOS>
+        '''
+        b = decode_out.shape[0]
+        # shape(b,)
+        pred_key_poses = torch.nonzero(X_querykey == self.SEP)[:,1]
+        # shape(b, 1, d_model)
+        pred_key_poses_expanded = pred_key_poses.view(-1,1,1).expand(decode_out.shape[0],1,decode_out.shape[-1])
+
+        decoder_key_out = torch.gather(input=decode_out, dim=1, index=pred_key_poses_expanded).squeeze(1)
+        assert torch.all(decoder_key_out[10] == decode_out[10][pred_key_poses[10]])
+
+        # shape(b, d_model), shape (b,)
+        return decoder_key_out, pred_key_poses
+
 
     def forward_minibatch(self, X_querykey, debug=False):
         '''
@@ -117,12 +134,15 @@ class DecoderPredictor(nn.Module):
         b, inp_len = X_querykey.shape
         # shape(b, inp_len, d_model)
         decoder_out = self.decode_querykey(X_querykey)
+
         # shape(b, d_model)
-        decode_key_out = decoder_out[:,self.pred_key_pos,:] 
+        # decode_key_out = decoder_out[:,self.pred_key_pos,:] 
+        decode_key_out, pred_key_poses = self.select_decode_key_out(decoder_out, X_querykey)
+
         # shape(b, key_support_size)
         key_logits = self.key_projection(decode_key_out)
         assert key_logits.shape == (b, self.key_support_size)
-        return key_logits
+        return key_logits, pred_key_poses
 
     def decode_querykey(self, X_querykey):
         '''
