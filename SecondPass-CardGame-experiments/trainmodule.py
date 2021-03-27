@@ -10,7 +10,7 @@ import numpy as np
 
 import contrastive_model
 import generative_model
-from metrics import LabelSmoothedLoss, InfoCELoss, CELoss, ThresholdedMetrics, ContrastiveDebugMetrics, GenerativeDebugMetrics
+from metrics import LabelSmoothedLoss, InfoCELoss, CELoss, KLdivLoss, ThresholdedMetrics, ContrastiveDebugMetrics, GenerativeDebugMetrics
 from optimizers import LRScheduledAdam
 
 
@@ -40,6 +40,8 @@ class TrainModule(pl.LightningModule):
         self.checkpoint_updated = False
         self.val_every_n_epoch = self.hparams['val_every_n_epoch']
         self.batch_size = hparams['batch_size']
+
+        self.KLdiv_criterion = KLdivLoss()
 
     ###################################################
     # hack checkpoint dir name to add runID
@@ -83,7 +85,8 @@ class TrainModule(pl.LightningModule):
                 if isinstance(outputs[0][m], torch.Tensor):
                     # epoch_metrics['avg_'+m] = torch.stack([x[m] for x in outputs]).mean()
                     # epoch_metrics['avg_'+m] = torch.stack([x.get(m, torch.tensor(0.).type_as(outputs[0]['val_loss'])) for x in outputs]).sum() / sum([float(m in x) for x in outputs])
-                    epoch_metrics['avg_'+m] = torch.stack([(x.get(m, torch.tensor(0.).type_as(outputs[0]['val_loss'])))*x['batch_size'] for x in outputs]).sum() / sum([float(m in x)*x['batch_size'] for x in outputs])
+                    avg_m = torch.stack([(x.get(m, torch.tensor(0.).type_as(outputs[0][m]).float()))*x['batch_size'] for x in outputs]).sum() / sum([float(m in x)*x['batch_size'] for x in outputs])
+                    epoch_metrics['avg_'+m] = avg_m.item()
                 elif isinstance(outputs[0][m], float) or isinstance(outputs[0][m], int):
                     # epoch_metrics['avg_'+m] = sum([x[m] for x in outputs]) / len(outputs)
                     # epoch_metrics['avg_'+m] = sum([x.get(m, 0.) for x in outputs]) / sum([float(m in x) for x in outputs])
@@ -96,10 +99,11 @@ class TrainModule(pl.LightningModule):
     
     def test_epoch_end(self, outputs):        
         averaged_metrics = self.aggregate_metrics_at_epoch_end(outputs)
-        test_metrics_save_path = os.path.join(self.dir_path, 'test_metrics.json')
+        test_metrics_save_path = os.path.join(self.hparams['resume_checkpoint_dir'], 'test_metrics.json')
         with open(test_metrics_save_path, 'w') as f:
-            json.dump(averaged_metrics)
+            json.dump(averaged_metrics, f)
         print(averaged_metrics)
+        print('Also saved to :', test_metrics_save_path)
 
 
 class GenerativeTrainModule(TrainModule):
@@ -140,12 +144,18 @@ class GenerativeTrainModule(TrainModule):
         key_logits, py_giv_x = self.model(
             X_querykey=X_querykey, from_support=val_bool, debug=debug
         )
-
+        
         # scalar
-        loss = self.loss_criterion(
+        if val_bool:
+            loss = self.KLdiv_criterion(
                 logits=key_logits,
-                X_keyId=X_querykey[:, 4], # <SOS> c1 c2 <SEP> k
-                debug=debug)
+                gt_binary=gt_binary
+            )
+        else:
+            loss = self.loss_criterion(
+                    logits=key_logits,
+                    X_keyId=X_querykey[:, 4], # <SOS> c1 c2 <SEP> k
+                    debug=debug)
 
         # shape (b,support)
         probs = py_giv_x if val_bool else None
@@ -178,24 +188,36 @@ class GenerativeTrainModule(TrainModule):
         # gt_binary = None
 
         # scalar
-        _, loss, metrics = self(
+        _, ce_loss, _ = self(
             X_querykey,
             gt_binary, 
-            val_bool= True if ((self.current_epoch+1) % self.val_every_n_epoch == 0) else False, 
+            val_bool=False, 
             debug=self.debug
         )
+
+        with torch.no_grad():
+            if ((self.current_epoch+1) % self.val_every_n_epoch == 0):
+                _, kl_loss, metrics = self(
+                    X_querykey,
+                    gt_binary, 
+                    val_bool=True, 
+                    debug=self.debug
+                )
+            else:
+                kl_loss, metrics = None, None
 
         lr = self.optimizers().param_groups[0]['lr']
 
         # log
         step_metrics = {
-            **{'train_loss': loss, 'train_batch_size':X_querykey.shape[0], 'learning_rate': lr}, 
+            **{'train_CE_loss': ce_loss, 'train_CE_loss_per_example': ce_loss/X_querykey.shape[0], 'train_batch_size':X_querykey.shape[0], 'learning_rate': lr}, 
             **({'train_'+m:metrics[m] for m in metrics} if metrics else {}),
+            **({'train_KL_loss':kl_loss, 'train_KL_loss_per_example': kl_loss/X_querykey.shape[0]} if kl_loss else {}),
             }
 
         self.log_metrics(step_metrics)
         # for backprop
-        return loss
+        return ce_loss
 
     def validation_step(self, batch, batch_nb):
 
@@ -205,8 +227,16 @@ class GenerativeTrainModule(TrainModule):
         # (b, inp_len), (b, support size)
         X_querykey, gt_binary = batch
 
-        # CE loss (both in gen and con)
-        _, loss, metrics = self(
+        # CE loss 
+        _, ce_loss, _ = self(
+            X_querykey,
+            gt_binary, 
+            val_bool=False, 
+            debug=self.debug
+        )
+
+        # KL loss (both in gen and con)
+        _, kl_loss, metrics = self(
             X_querykey,
             gt_binary, 
             val_bool=True, 
@@ -214,7 +244,11 @@ class GenerativeTrainModule(TrainModule):
         )
         
         # log 
-        step_metrics = {**{'val_loss': loss, 'val_loss_per_example': loss/X_querykey.shape[0]}, **{'val_'+m:metrics[m] for m in metrics}}
+        step_metrics = {
+            **{'val_CE_loss': ce_loss, 'val_CE_loss_per_example': ce_loss/X_querykey.shape[0]}, 
+            **{'val_KL_loss': kl_loss, 'val_KL_loss_per_example': kl_loss/X_querykey.shape[0]}, 
+            **{'val_'+m:metrics[m] for m in metrics}
+        }
         devices_max_memory_alloc = self.get_max_memory_alloc()
         for device, val in devices_max_memory_alloc.items():
             step_metrics[f'step_max_memory_alloc_cuda:{device}'] = val
@@ -226,18 +260,20 @@ class GenerativeTrainModule(TrainModule):
 
         # (b, inp_len), (b, support size)
         X_querykey, gt_binary = batch
-        
+
         # compute scores for all keys
         # shape(b, key_support_size), scalar, dictionary
-        log_pxy, loss, metrics = self(
+        log_pxy, kl_loss, metrics = self(
             X_querykey,
             gt_binary, 
             val_bool=True, 
-            full_test_bool=True, 
+            full_test_bool=True,
             debug=self.debug)
                 
         # log
-        step_metrics = {**({'test_loss':loss}), **{'test_'+m:metrics[m] for m in metrics}}
+        step_metrics = {
+            **({'test_KL_loss':kl_loss, 'test_KL_loss_per_example': kl_loss/X_querykey.shape[0]}), 
+            **{'test_'+m:metrics[m] for m in metrics}}
         self.log_metrics(step_metrics)
         step_metrics = {**step_metrics, **({'batch_size':X_querykey.shape[0]})}
         return step_metrics 
@@ -309,7 +345,26 @@ class ContrastiveTrainModule(TrainModule):
         logits = self.model(X_query, X_key, from_support=((not self.use_InfoNCE) or val_bool), debug=debug)
 
         # scalar, shape(b,)
-        loss = None if val_bool else self.loss_criterion(logits, X_key, debug=debug)
+        if val_bool:
+            loss = self.KLdiv_criterion(
+                logits=logits,
+                gt_binary=gt_binary
+            )
+            if not full_test_bool:
+                ce_loss = self.CE_criterion(
+                    logits=logits,
+                    X_keyId=X_key,
+                    debug=debug
+                )
+            else:
+                ce_loss = None
+        else:
+            loss = self.loss_criterion(
+                logits=logits,
+                X_keyId=X_key,
+                debug=debug,
+            )
+            ce_loss = None
 
         # shape (b,support)
         probs = self.softmax(logits)
@@ -333,7 +388,7 @@ class ContrastiveTrainModule(TrainModule):
 
         metrics = {**metrics, **debug_metrics} if val_bool else None 
 
-        return logits, loss, metrics
+        return logits, loss, ce_loss, metrics
     
     ###################################################
 
@@ -344,31 +399,29 @@ class ContrastiveTrainModule(TrainModule):
         # gt_binary = None
 
         # scalar
-        _, loss, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
+        _, nce_loss, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
 
         with torch.no_grad():
             if (self.current_epoch+1) % self.val_every_n_epoch == 0:
-                _, _, tr_metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
+                _, kl_loss, ce_loss, metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
             else:
-                tr_metrics = {}
-        # tr_metrics = {}
-                
-        if self.debug:
-            print('-----------------------------')
-            print('train step')
-            print(
-                'X_query:',X_query[0], '\nX_key:',
-                X_key[0], '\nloss:', loss,
-            )
+                kl_loss = None
+                ce_loss = None
+                metrics = None
 
         global_step = self.global_step
         lr = self.optimizers().param_groups[0]['lr']
 
         # log
-        step_metrics = {'train_loss': loss, 'train_loss_per_example': loss/X_query.shape[0], 'learning_rate': lr, 'global_step':global_step}
-        step_metrics = {**step_metrics, **({'train_'+m:tr_metrics[m] for m in tr_metrics} if tr_metrics else {})}
+        step_metrics = {
+            **({'train_infoNCE_loss': nce_loss, 'train_infoNCE_loss_per_example': nce_loss/X_query.shape[0], 'learning_rate': lr, 'global_step':global_step}), 
+            **({'train_'+m:metrics[m] for m in metrics} if metrics else {}),
+            **({'train_KL_loss': kl_loss, 'train_KL_loss_per_example': kl_loss/X_query.shape[0]} if kl_loss else {}),
+            **({'train_CE_loss': ce_loss, 'train_CE_loss_per_example': ce_loss/X_query.shape[0]} if ce_loss else {})
+        }
         self.log_metrics(step_metrics)
-        return loss
+
+        return nce_loss
 
     def validation_step(self, batch, batch_nb):
 
@@ -377,23 +430,22 @@ class ContrastiveTrainModule(TrainModule):
 
         # (b, len_q), (b, ), (b, support size)
         X_query, X_key, gt_binary = batch
-        _, loss,  _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
-        _, _, metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
-        
-        if self.debug:
-            print('-----------------------------')
-            print('validation step')
-            print(
-                'X_query:',X_query[0], '\X_key:',
-                X_key[0], '\nloss:', loss, '\nmetrics:', [(m,metrics[m]) for m in metrics]
-            )
-        
+        _, nce_loss, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
+        _, kl_loss, ce_loss, metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
+
         # log 
-        step_metrics = {**{'val_loss': loss, 'val_loss_per_example': loss/X_query.shape[0]}, **{'val_'+m:metrics[m] for m in metrics}}
+        step_metrics = {
+            **{'val_infoNCE_loss': nce_loss, 'val_loss_infoNCE_per_example': nce_loss/X_query.shape[0]},
+            **{'val_KL_loss': kl_loss, 'val_KL_loss_per_example': kl_loss/X_query.shape[0]},
+            **{'val_CE_loss': ce_loss, 'val_CE_loss_per_example': ce_loss/X_query.shape[0]},
+            **{'val_'+m:metrics[m] for m in metrics}
+        }
+        
         devices_max_memory_alloc = self.get_max_memory_alloc()
         for device, val in devices_max_memory_alloc.items():
             step_metrics[f'step_max_memory_alloc_cuda:{device}'] = val
         self.log_metrics(step_metrics)
+        step_metrics = {**step_metrics, **({'batch_size':X_query.shape[0]})}
         return step_metrics
     
     def test_step(self, batch, batch_nb):
@@ -404,11 +456,15 @@ class ContrastiveTrainModule(TrainModule):
         
         # compute scores for all keys
         # shape(b, key_support_size), _, dictionary
-        logits, _, metrics = self(X_query, X_key, gt_binary, val_bool=True, full_test_bool=True, debug=self.debug)     
+        logits, kl_loss, _, metrics = self(X_query, X_key, gt_binary, val_bool=True, full_test_bool=True, debug=self.debug)     
         
         # log
-        step_metrics = {'test_'+m:metrics[m] for m in metrics}
+        step_metrics = {
+            **{'test_KL_loss':kl_loss},
+            **{'test_'+m:metrics[m] for m in metrics},
+        }
         self.log_metrics(step_metrics)
+        step_metrics = {**step_metrics, **({'batch_size':X_query.shape[0]})}
         return step_metrics 
 
     ###################################################

@@ -69,6 +69,26 @@ class CELoss(nn.Module):
 
         return loss
 
+############################################################
+class KLdivLoss(nn.Module):
+    '''
+    KL divergence Loss for evaluation
+    '''
+    def __init__(self):
+        super().__init__()
+        self.KLdiv_criterion = nn.KLDivLoss(reduction='sum')
+        self.logprob = nn.LogSoftmax(dim=-1)
+
+    def forward(self, logits, gt_binary, debug=False):
+        '''
+        logits: shape (batch_size=b, key_support_size)
+        labels: shape (batch_size=b, key_support_size)
+        '''
+        K = logits.shape[-1]
+        # shape (b, K)
+        pred_logprobs = self.logprob(logits)
+        gt_probs = gt_binary / torch.sum(gt_binary)
+        return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs)
 
 ############################################################
 class LabelSmoothedLoss(nn.Module):
@@ -158,6 +178,7 @@ class ContrastiveDebugMetrics(nn.Module):
         self.key_support_size = key_support_size
 
     def forward(self, scores, threshold, gt_binary, debug):
+
         # Are the top k correct?
         b = scores.shape[0]
         

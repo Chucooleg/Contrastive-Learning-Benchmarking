@@ -94,6 +94,9 @@ def load_hparams(args, data):
     if args.mode == 'resume_train':
         hparams['max_epochs'] = int(args.resume_max_epochs)
 
+    if args.mode in ('resume_train', 'test'):
+        hparams['resume_checkpoint_dir'] = args.resume_checkpoint_dir 
+
     print('----------hparams----------')
     for k in hparams:
         print(k, ':', hparams[k])
@@ -129,12 +132,12 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
     trainmodule.load_state_dict(checkpoint['state_dict'])
  
     checkpoint_callback = ModelCheckpoint(
-        monitor='avg_val_accuracy_by_Query',
+        monitor='val_KL_loss_per_example',
         dirpath=ckpt_dir_PATH,
-        filename='{epoch:02d}-{step:02d}-{val_loss:.2f}',
+        filename='val_KL_loss_{epoch:02d}-{step:02d}-{val_KL_loss_per_example:.5f}',
         save_top_k=2,
         save_last=True,
-        mode='max',
+        mode='min',
     )
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
@@ -149,7 +152,7 @@ def resume_train(args, hparams, project_name, run_Id, trainmodule, datamodule, c
         weights_summary = 'full',
         gradient_clip_val=hparams['gradient_clip_val'],
         callbacks=[checkpoint_callback, lr_monitor],
-        log_every_n_steps=1,
+        # log_every_n_steps=1,
     )
     
     # with torch.autograd.detect_anomaly():
@@ -162,12 +165,12 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
 
     # checkpoints
     checkpoint_callback = ModelCheckpoint(
-        monitor='avg_val_accuracy_by_Query',
+        monitor='val_KL_loss_per_example',
         dirpath=ckpt_dir_PATH,
-        filename='{epoch:02d}-{step:02d}-{val_loss:.2f}',
+        filename='val_KL_loss_{epoch:02d}-{step:02d}-{val_KL_loss_per_example:.5f}',
         save_top_k=2,
         save_last=True,
-        mode='max',
+        mode='min',
     )
 
     # monitors
@@ -197,7 +200,7 @@ def run_train(args, hparams, trainmodule, datamodule, ckpt_dir_PATH, wd_logger):
 
 
 def validate_args(args):
-    assert args.mode in ('train', 'resume_train', 'test_full', 'param_summary')
+    assert args.mode in ('train', 'resume_train', 'test', 'param_summary')
     assert os.path.exists(args.data_path), 'data_path does not exist' 
     assert args.project_name, 'missing project name. e.g. ContrastiveLearning-cardgame-Scaling'
 
@@ -209,7 +212,7 @@ def validate_args(args):
         assert args.runID, 'missing runID, e.g. 1lygiuq3'
         assert os.path.exists(args.resume_checkpoint_dir), f'Resume checkpoint_dir {args.resume_checkpoint_dir} does not exist.'
         args.config_path = os.path.join(args.resume_checkpoint_dir, 'config.json')
-        if args.mode == 'test_full':
+        if args.mode == 'test':
             assert args.ckpt_name, 'missing ckpt_name for testing. e.g. last.ckpt'
 
 
@@ -328,7 +331,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--project_name', type=str)
     parser.add_argument('--data_path', help='path to data json file')
-    parser.add_argument('--mode', help='train, resume_train, test_full')
+    parser.add_argument('--mode', help='train, resume_train, test')
     # new training
     parser.add_argument('--config_path', default=None, help='path to config.json, must provide if starting new training.')
     parser.add_argument('--checkpoint_dir', default=None, help='path to save New checkpoints, must provide if starting new training.')
