@@ -82,6 +82,7 @@ class Encoder(nn.Module):
         encoder_out: output from encoder stack. 
                     shape (batch_size=b, inp_len, d_model)
         """
+
         # Make self-attn mask
         self_attn_mask = make_attn_mask(inp_pads, inp_pads, mask_forward=self.mask_forward)
 
@@ -89,10 +90,11 @@ class Encoder(nn.Module):
         last_z = inp_embedding
         for l, encoder_layer in enumerate(self.encoder_layers):
             # shape (b, inp_len, d_model)
-            last_z, _ = encoder_layer(last_z, self_attn_mask)
+            last_z, self_attn_wts = encoder_layer(last_z, self_attn_mask)
 
         # shape(b, inp_len, d_model)
         encoder_out = last_z
+
         # shape(b, inp_len, d_model)
         return encoder_out
 
@@ -116,7 +118,7 @@ class EncoderLayer(nn.Module):
         '''
         z_lm1 : last encoder layer activations. shape (batch_size=b, inp_len, d_model)
         '''
-        # (b, inp_len, d_model)
+        # (b, inp_len, d_model), (b, h, inp_len, inp_len)
         z_lm1_h, self_attn_wts = self.self_attn(z_lm1, z_lm1, self_attn_mask)
         # (b, inp_len, d_model)
         z_lm1_h_norm = self.layer_norms[0](z_lm1 + self.heads_dropout(z_lm1_h))
@@ -354,7 +356,7 @@ def dotproduct_attention(Q, K, V, mask, beta_dropout, debug=False):
     # Apply mask 
     # (b, h, n, m)
     mask_stack = mask.unsqueeze(1).expand(-1, h, -1, -1)
-    alpha_masked = torch.masked_fill(alpha, mask_stack==1, -1e4)
+    alpha_masked = torch.masked_fill(alpha, mask_stack==1, -1e32)
 
     # normalize across attendee len m
     # (b, h, n, m)
@@ -370,7 +372,7 @@ def dotproduct_attention(Q, K, V, mask, beta_dropout, debug=False):
         print('alpha_masked\n', alpha_masked)
         print('beta\n', beta)
         print('wt_V\n', wt_V)
-        
+
     return wt_V, beta
 
 ########################################################
