@@ -348,7 +348,8 @@ class ContrastiveTrainModule(TrainModule):
         if val_bool:
             loss = self.KLdiv_criterion(
                 logits=logits,
-                gt_binary=gt_binary
+                gt_binary=gt_binary,
+                debug=debug
             )
             if not full_test_bool:
                 ce_loss = self.CE_criterion(
