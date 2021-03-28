@@ -354,7 +354,7 @@ def dotproduct_attention(Q, K, V, mask, beta_dropout, debug=False):
     # Apply mask 
     # (b, h, n, m)
     mask_stack = mask.unsqueeze(1).expand(-1, h, -1, -1)
-    alpha_masked = torch.masked_fill(alpha, mask_stack==1, -1e4)
+    alpha_masked = torch.masked_fill(alpha, mask_stack==1, -1e32)
 
     # normalize across attendee len m
     # (b, h, n, m)
