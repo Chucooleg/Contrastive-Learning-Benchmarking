@@ -344,7 +344,7 @@ class ContrastiveTrainModule(TrainModule):
         full_test_bool: boolean. 
         '''
         b, len_q = X_query.shape
-        assert len_q <= self.hparams['max_len_q'] + 2 # with <EOS> and <SOS>
+        assert len_q <= self.hparams['max_len_q'] * 2 # with <EOS> and <SOS>
 
         # shape (b,support) if from_support else (b, b)
         logits = self.model(X_query, X_key, from_support=((not self.use_InfoNCE) or val_bool), debug=debug)

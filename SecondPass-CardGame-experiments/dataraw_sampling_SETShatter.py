@@ -587,7 +587,7 @@ def sample_one_training_datapoint(
         debug=debug
     )   
 
-    return q_tokens, k_idx
+    return q_tokens, [k_idx], gt_ks_idx
 
 
 def powerset(iterable):

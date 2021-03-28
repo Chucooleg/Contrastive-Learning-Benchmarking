@@ -58,7 +58,7 @@ def construct_full_model(hparams):
 
     position_encoder = LearnedPositionEncoder(
         d_model=hparams['d_model'], 
-        max_len=hparams['max_len_q']+2, # <EOS> <SOS>
+        max_len=hparams['max_len_q']*2+2, # <EOS> <SOS>
         emb_init_var=torch.var(query_embed_X.embedding.weight).cpu().item()
     )
 

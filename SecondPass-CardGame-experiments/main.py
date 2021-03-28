@@ -66,6 +66,10 @@ def load_hparams(args, data):
     hparams['num_attr_vals'] = data['num_attr_vals']
     hparams['vocab_size'] = data['vocab_size']
 
+    hparams['nest_depth_int'] = data['nest_depth_int']
+    hparams['multiple_OR_sets_bool'] = data['multiple_OR_sets_bool']
+    hparams['query_length_multiplier'] = data['query_length_multiplier']
+
     hparams['vocab_by_property'] = data['vocab_by_property']
     if 'symbol_vocab_token_lookup' in data.keys():
         sym_lookup = data['symbol_vocab_token_lookup']
