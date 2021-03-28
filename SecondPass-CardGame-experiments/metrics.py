@@ -24,12 +24,12 @@ class InfoCELoss(nn.Module):
         assert logits.shape[0] == logits.shape[1]
         b = logits.shape[0]
         
-        logits /= self.temperature_const
+        logits_smoothed = logits / self.temperature_const
         
         # (b, )
-        labels = torch.arange(b).type_as(logits).long()
-        sum_loss_per_row = self.CE_loss(logits, labels)
-        sum_loss_per_col = self.CE_loss(logits.T, labels)
+        labels = torch.arange(b).type_as(logits_smoothed).long()
+        sum_loss_per_row = self.CE_loss(logits_smoothed, labels)
+        sum_loss_per_col = self.CE_loss(logits_smoothed.T, labels)
         
         if debug:
             print('sum_loss_per_row=',sum_loss_per_row)
@@ -59,10 +59,10 @@ class CELoss(nn.Module):
         assert logits.shape[1] == self.key_support_size
         b = logits.shape[0]
 
-        logits /= self.temperature_const
+        logits_smoothed = logits / self.temperature_const
         labels = X_keyId.squeeze(-1)
         # shape (b,)
-        loss = self.CE_loss(logits, labels)
+        loss = self.CE_loss(logits_smoothed, labels)
 
         if debug:
             print('loss=',loss)
@@ -84,10 +84,12 @@ class KLdivLoss(nn.Module):
         logits: shape (batch_size=b, key_support_size)
         labels: shape (batch_size=b, key_support_size)
         '''
+
         K = logits.shape[-1]
         # shape (b, K)
         pred_logprobs = self.logprob(logits)
         gt_probs = gt_binary / torch.sum(gt_binary, dim=-1).unsqueeze(-1)
+
         return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs)
 
 ############################################################
