@@ -24,13 +24,13 @@
     "representation_pos": 0,
 
     "dotproduct_bottleneck": true,
-    "normalize_dotproduct": true,
+    "normalize_dotproduct": false,
     "contrastive_use_infoNCE": true,
     "loss_temperature_const": 1.0,
     "loss_smoothing_const": 0.1,
     "nonlinear_classifier_scale_down_factor": [1,1,1],
 
-    "contrastive_optimizer": "adam",
+    "contrastive_optimizer": "scheduled_adam",
     "cosine_annealing_T_max": 30,
 
     "adam_lr": 1e-05,
@@ -53,7 +53,7 @@
     "decay_lr_stops": 80000,
     "decay_lr_interval": 1000,
     "generative_overall_lr_scale": 1.0,
-    "contrastive_overall_lr_scale": 0.05,
+    "contrastive_overall_lr_scale": 1.0,
 
     "gradient_clip_val": 0.0,
 
