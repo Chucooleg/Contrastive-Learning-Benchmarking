@@ -59,10 +59,10 @@ class CELoss(nn.Module):
         assert logits.shape[1] == self.key_support_size
         b = logits.shape[0]
 
-        logits /= self.temperature_const
+        logits_smoothed = logits / self.temperature_const
         labels = X_keyId.squeeze(-1)
         # shape (b,)
-        loss = self.CE_loss(logits, labels)
+        loss = self.CE_loss(logits_smoothed, labels)
 
         if debug:
             print('loss=',loss)
