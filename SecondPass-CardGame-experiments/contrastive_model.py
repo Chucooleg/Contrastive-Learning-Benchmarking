@@ -17,7 +17,11 @@ def construct_full_model(hparams):
         d_model=hparams['d_model'], 
         init_option='transformer'
     )
-    key_embed_X = query_embed_X # point to the same embedding matrix
+    key_embed_X = ScaledEmbedding(
+        V=hparams['vocab_size'],
+        d_model=hparams['vec_repr'], 
+        init_option='w2v'
+    )
 
     embed_dropout = nn.Dropout(hparams['embed_dropout'])
 
@@ -28,10 +32,8 @@ def construct_full_model(hparams):
     # original 
     # query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
 
-    query_projection = nn.Sequential(
-        nn.Linear(hparams['d_model'],hparams['vec_repr']),
-        LayerNorm(hparams['vec_repr'])
-    )
+    query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
+    key_projection = None
 
     # # original
     # key_projection = nn.Sequential(
@@ -41,12 +43,12 @@ def construct_full_model(hparams):
     # )
 
     # with one layer norm d_model, d_ff, vec_repr
-    key_projection = nn.Sequential(
-        nn.Linear(hparams['d_model'],hparams['d_ff']),
-        nn.ReLU(),
-        nn.Linear(hparams['d_ff'],hparams['vec_repr']),
-        LayerNorm(hparams['vec_repr'])
-    )
+    # key_projection = nn.Sequential(
+    #     nn.Linear(hparams['d_model'],hparams['d_ff']),
+    #     nn.ReLU(),
+    #     nn.Linear(hparams['d_ff'],hparams['vec_repr']),
+    #     LayerNorm(hparams['vec_repr'])
+    # )
 
     # # with one layer norm d_model, d_model, vec_repr
     # key_projection = nn.Sequential(
@@ -69,7 +71,6 @@ def construct_full_model(hparams):
         ]
     inp_key_layer = [
         ('scaled_embed', key_embed_X), 
-        ('position_encoder', position_encoder),
         ('embed_dropout', embed_dropout)
         ]
 
@@ -294,7 +295,8 @@ class EncoderPredictor(nn.Module):
         inp_embed = self.inp_key_layer(X)
 
         # shape(size(support), vec_repr)
-        return self.key_projection(inp_embed.squeeze(1))
+        # return self.key_projection(inp_embed.squeeze(1))
+        return inp_embed.squeeze(1)
 
     def encode_all_keys(self):
         X = self.all_keys
@@ -302,7 +304,8 @@ class EncoderPredictor(nn.Module):
         inp_embed = self.inp_key_layer(X)
         
         # shape(size(support), vec_repr)
-        return self.key_projection(inp_embed.squeeze(1))
+        # return self.key_projection(inp_embed.squeeze(1))
+        return inp_embed.squeeze(1)
 
 
 def make_classifier(scale_down_factor, vec_repr, non_linearity_class):

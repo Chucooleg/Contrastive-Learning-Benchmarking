@@ -7,13 +7,13 @@
 
     "d_model": 512,
     "embed_dropout": 0.0,
-    "vec_repr": 512,
+    "vec_repr": 27,
 
     "model": "contrastive",
 
     "d_ff":1024,
-    "N_enc": 2,
-    "num_heads": 2,
+    "N_enc": 8,
+    "num_heads": 8,
     "N_enc_key":4,
     "num_heads_key":2,
     
@@ -24,7 +24,7 @@
     "representation_pos": 0,
 
     "dotproduct_bottleneck": true,
-    "normalize_dotproduct": true,
+    "normalize_dotproduct": false,
     "contrastive_use_infoNCE": true,
     "loss_temperature_const": 1.0,
     "loss_smoothing_const": 0.1,
@@ -53,7 +53,7 @@
     "decay_lr_stops": 80000,
     "decay_lr_interval": 1000,
     "generative_overall_lr_scale": 1.0,
-    "contrastive_overall_lr_scale": 0.05,
+    "contrastive_overall_lr_scale": 1.0,
 
     "gradient_clip_val": 0.0,
 
