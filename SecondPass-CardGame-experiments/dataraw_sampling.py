@@ -131,11 +131,11 @@ def construct_card_idx_lookup(num_attributes, num_attr_vals):
 
 ####################################################################################
 
-def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup):
+def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup, N_pairs):
     '''Wrong sampling props for training.'''
 
     # card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
-    query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=3)
+    query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=N_pairs)
 
     # 6 tokens
     q_vocab_tokens = [card2idx_lookup[tuple(qp)] for qp in query_props]
@@ -146,14 +146,14 @@ def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2i
     return q_vocab_tokens, None, gt_ks_idx
 
 
-def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup):
+def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup, N_pairs):
     '''Rejection Sampling'''
 
     success = False 
 
     while not success:
 
-        query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=3)
+        query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=N_pairs)
         if random.random() <= (keys_len *1.0 / (num_attr_vals**num_attributes)):
             success = True
 
@@ -179,7 +179,7 @@ def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup
 #     return q_vocab_tokens, k_vocab_tokens, gt_ks_idx
 
 
-def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
+def sample_queries(num_attributes, num_attr_vals, N_pairs, N_train, N_val, N_test):
     '''Simple SET'''
 
     num_keys = num_attr_vals**num_attributes
@@ -213,7 +213,7 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     max_len_q = 2
     for i in tqdm(range(N)):
 
-        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup)
+        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup, N_pairs)
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)
@@ -224,7 +224,7 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
 
     for i in tqdm(range(N_test)):
 
-        q_vocab_tokens, _, gt_ks_idx = sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup)
+        q_vocab_tokens, _, gt_ks_idx = sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup, N_pairs)
 
         test_marginal_tokens.append((q_vocab_tokens,))
         test_marginal_gt_idxs.append(gt_ks_idx)       
@@ -237,6 +237,7 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
         'multiple_OR_sets_bool': None,
 
         'query_length_multiplier': None,
+        'N_pairs': N_pairs,
         'max_len_q': max_len_q,
         'len_k': 1,
         

@@ -78,6 +78,7 @@ def load_hparams(args, data):
         hparams[k] = sym_lookup[k]
 
     hparams['max_len_q'] = data['max_len_q'] 
+    hparams['N_pairs'] = data.get('N_pairs', 3)
     hparams['len_k'] = data['len_k']
     if not hparams['vocab_by_property']:
         assert hparams['len_k'] == 1

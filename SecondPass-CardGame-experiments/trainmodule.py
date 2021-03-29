@@ -41,6 +41,7 @@ class TrainModule(pl.LightningModule):
         self.val_every_n_epoch = self.hparams['val_every_n_epoch']
         self.batch_size = hparams['batch_size']
 
+
         self.KLdiv_criterion = KLdivLoss()
 
     ###################################################
@@ -155,7 +156,7 @@ class GenerativeTrainModule(TrainModule):
             try:
                 loss = self.loss_criterion(
                         logits=key_logits,
-                        X_keyId=X_querykey[:, 8], # <SOS> c1-c6  <SEP> k
+                        X_keyId=X_querykey[:, self.hparams['max_len_q'] + 2], # <SOS> 1-max_len_q  <SEP> k
                         debug=debug)
             except:
                 breakpoint()

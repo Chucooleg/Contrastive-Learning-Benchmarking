@@ -37,6 +37,7 @@ class GameDatasetFromDataPoints(Dataset):
         self.EOS = hparams['EOS']
         self.PAD = hparams['PAD']
         self.PLH = hparams['PLH']
+        self.N_pairs = hparams['N_pairs']
 
     def make_gt_binary(self, gt_idxs):
         gt_binary = torch.zeros(self.key_support_size)
@@ -76,7 +77,7 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
     def __getitem__(self, idx):
 
         # list, list if vocab_by_property else int 
-        y_vocab_tokens, x_vocab_tokens, gt_idxs = sample_one_training_datapoint(self.num_attributes, self.num_attr_vals, self.card2idx_lookup)
+        y_vocab_tokens, x_vocab_tokens, gt_idxs = sample_one_training_datapoint(self.num_attributes, self.num_attr_vals, self.card2idx_lookup, self.N_pairs)
 
         # list of integers
         gt_binary_tensor = self.make_gt_binary(gt_idxs)

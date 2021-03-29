@@ -51,6 +51,7 @@ def construct_full_model(hparams):
         d_model = hparams['d_model'],
         vocab_size = hparams['vocab_size'],
         vocab_by_property = hparams['vocab_by_property'],
+        max_len_q = hparams['max_len_q'],
         len_k = hparams['len_k'],
         SOS = hparams['SOS'],
         EOS = hparams['EOS'],
@@ -73,7 +74,7 @@ class DecoderPredictor(nn.Module):
 
     def __init__(
         self, inp_querykey_layer, querykey_decoder, classifier, key_support_size, 
-        d_model, vocab_size, vocab_by_property, len_k, SOS, EOS, SEP, PAD, NULL, PLH, num_attributes, num_attr_vals, debug=False):
+        d_model, vocab_size, vocab_by_property, max_len_q, len_k, SOS, EOS, SEP, PAD, NULL, PLH, num_attributes, num_attr_vals, debug=False):
         super().__init__()
         self.inp_querykey_layer = inp_querykey_layer
         self.querykey_decoder = querykey_decoder
@@ -90,12 +91,13 @@ class DecoderPredictor(nn.Module):
         self.PLH = PLH
         self.vocab_size = vocab_size
         self.vocab_by_property = vocab_by_property
+        self.max_len_q = max_len_q
         self.len_k = len_k
         self.debug = debug
         
         self.softmax = nn.Softmax(dim=-1)
 
-        self.pred_key_pos = 7 # <SOS> car1-6 <SEP> k, predict at <SEP> position
+        self.pred_key_pos = self.max_len_q + 1 # <SOS> car1-max_len_q <SEP> k, predict at <SEP> position
         self.key_projection = nn.Linear(self.d_model, self.key_support_size)
 
 
