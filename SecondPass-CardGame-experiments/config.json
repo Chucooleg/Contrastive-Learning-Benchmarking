@@ -30,7 +30,7 @@
     "loss_smoothing_const": 0.1,
     "nonlinear_classifier_scale_down_factor": [1,1,1],
 
-    "contrastive_optimizer": "scheduled_adam",
+    "contrastive_optimizer": "adam",
     "cosine_annealing_T_max": 30,
 
     "adam_lr": 1e-05,
@@ -45,13 +45,13 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-06,
-    "scheduled_adam_warmup_steps": 4000,
+    "scheduled_adam_warmup_steps": 12000,
 
     "additional_lr_decay": true,
     "additional_lr_decay_gamma": 0.9,
-    "decay_lr_starts": 4000,
+    "decay_lr_starts": 12000,
     "decay_lr_stops": 80000,
-    "decay_lr_interval": 1000,
+    "decay_lr_interval": 2000,
     "generative_overall_lr_scale": 1.0,
     "contrastive_overall_lr_scale": 1.0,
 
