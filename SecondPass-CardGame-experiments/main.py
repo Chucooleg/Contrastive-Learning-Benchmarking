@@ -271,9 +271,6 @@ def main(args):
             round(max(model_summary.param_nums)/1000,2)
         )
 
-    # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-FirstPass'
-    # project_name = 'ContrastiveLearning-simple-Shattering-sampling-tests-27'
-    # project_name = 'ContrastiveLearning-cardgame-Scaling-SET-9cards'
     project_name = args.project_name
 
     if args.mode == 'train':
