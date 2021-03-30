@@ -7,13 +7,13 @@
 
     "d_model": 512,
     "embed_dropout": 0.0,
-    "vec_repr": 128,
+    "vec_repr": 512,
 
     "model": "contrastive",
 
     "d_ff":1024,
-    "N_enc": 8,
-    "num_heads": 8,
+    "N_enc": 4,
+    "num_heads": 4,
     "N_enc_key":4,
     "num_heads_key":2,
     
@@ -25,12 +25,12 @@
 
     "dotproduct_bottleneck": true,
     "normalize_dotproduct": false,
-    "contrastive_use_infoNCE": true,
+    "contrastive_use_infoNCE": false,
     "loss_temperature_const": 1.0,
     "loss_smoothing_const": 0.1,
     "nonlinear_classifier_scale_down_factor": [1,1,1],
 
-    "contrastive_optimizer": "adam",
+    "contrastive_optimizer": "scheduled_adam",
     "cosine_annealing_T_max": 30,
 
     "adam_lr": 1e-05,
@@ -45,11 +45,11 @@
     "scheduled_adam_beta1": 0.9,
     "scheduled_adam_beta2": 0.98,
     "scheduled_adam_epsilon": 1e-06,
-    "scheduled_adam_warmup_steps": 8000,
+    "scheduled_adam_warmup_steps": 36000,
 
     "additional_lr_decay": true,
     "additional_lr_decay_gamma": 0.9,
-    "decay_lr_starts": 8000,
+    "decay_lr_starts": 36000,
     "decay_lr_stops": 80000,
     "decay_lr_interval": 2000,
     "generative_overall_lr_scale": 1.0,

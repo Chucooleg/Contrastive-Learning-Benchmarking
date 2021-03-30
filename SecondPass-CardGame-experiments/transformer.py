@@ -423,9 +423,9 @@ def make_attn_mask(attender_pads, attendee_pads, mask_forward=False, debug=False
 
 class ScaledEmbedding(nn.Module):
 
-    def __init__(self, V, d_model, init_option):
+    def __init__(self, V, d_model, vec_repr, init_option):
         super().__init__()
-        assert init_option in ('w2v', 'transformer', 'xavier')
+        assert init_option in ('w2v', 'transformer', 'xavier', 'linear')
 
         self.embedding = nn.Embedding(V, d_model)
         self.d_model = d_model
@@ -439,9 +439,13 @@ class ScaledEmbedding(nn.Module):
             nn.init.normal_(self.embedding.weight, mean=0., std=(1/self.d_model)**(1/2))
             # nn.init.normal_(self.embedding.weight, mean=0., std=(1/0.1)**(1/2))
             # nn.init.normal_(self.embedding.weight, mean=0., std=(1)**(1/2))
-        else: # xavier
+        elif init_option == 'xavier':
             with torch.no_grad():
                 self.embedding.weight.mul_(np.sqrt(1/self.d_model))
+        else: # default_pytorch_linear
+            # reference : https://pytorch.org/docs/stable/generated/torch.nn.Linear.html
+            nn.init.uniform_(self.embedding.weight, a=-(np.sqrt(1./vec_repr)), b=(np.sqrt(1./vec_repr)))
+
 
         self.forward_scale = math.sqrt(self.d_model) if self.init_option == 'transformer' else 1
 
@@ -455,7 +459,6 @@ class ScaledEmbedding(nn.Module):
         # embedded = self.standardize(embedded)
         # embedded = self.minmax_normalize(embedded)
 
-        # ??????????
         # why are there NaNs? 
         # if torch.max(embedded) > 2000.:
         #     import pdb; pdb.set_trace()
