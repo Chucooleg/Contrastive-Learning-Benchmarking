@@ -1,5 +1,3 @@
-
-
 '''
 dataraw_sampling_SimpleSET_idx
 '''
@@ -107,8 +105,8 @@ def construct_cardpair_answer_lookup(num_attributes, num_attr_vals, debug=False)
 
 ####################################################################################
 
-def sample_one_training_datapoint(num_keys, cardpair_answer_lookup, return_gt=False):
-    '''Simple SET'''
+def sample_one_training_datapoint_lookup(num_keys, num_attributes, num_attr_vals, cardpair_answer_lookup):
+    '''Simple SET from answer lookup'''
     card1_idx = np.random.choice(num_keys)
     card2_idx = np.random.choice(num_keys)
 
@@ -117,13 +115,22 @@ def sample_one_training_datapoint(num_keys, cardpair_answer_lookup, return_gt=Fa
     # int
     k_vocab_tokens = cardpair_answer_lookup[(min(card1_idx, card2_idx), max(card1_idx, card2_idx))]
 
-    if return_gt:
-        gt_ks_idx = [k_vocab_tokens]
-    else:
-        gt_ks_idx = None
+    # list, list, list
+    return q_vocab_tokens, [k_vocab_tokens], [k_vocab_tokens]
+
+
+def sample_one_training_datapoint_derive_prop(num_keys, num_attributes, num_attr_vals, cardpair_answer_lookup):
+    '''Simple SET from deriving properties'''
+    card1_idx = np.random.choice(num_keys)
+    card2_idx = np.random.choice(num_keys)
+
+    q_vocab_tokens = [card1_idx, card2_idx]
+    
+    # int
+    k_vocab_tokens, _ = eval_cardpair_by_idx(num_attributes, num_attr_vals, card1_idx, card2_idx, debug=False)
 
     # list, list, list
-    return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
+    return q_vocab_tokens, [k_vocab_tokens], [k_vocab_tokens]
 
 
 def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
@@ -135,10 +142,15 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     tokens = []
     gt_idxs = []
 
-
-    start_time = time.time()
-    cardpair_answer_lookup = construct_cardpair_answer_lookup(num_attributes, num_attr_vals)
-    print('Time to build cardpair_answer_lookup:', time.time()-start_time, 'seconds')
+    if num_attributes > 7:
+        print('Sampling from derive prop, no answer lookup is built.')
+        cardpair_answer_lookup = None
+        sample_one_training_datapoint = sample_one_training_datapoint_derive_prop
+    else:
+        start_time = time.time()
+        cardpair_answer_lookup = construct_cardpair_answer_lookup(num_attributes, num_attr_vals)
+        print('Time to build cardpair_answer_lookup:', time.time()-start_time, 'seconds')
+        sample_one_training_datapoint = sample_one_training_datapoint_lookup
 
     base_vocab_size =  num_keys
     symbol_vocab_token_lookup = {
@@ -156,7 +168,8 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
     
     max_len_q = 2
     for i in tqdm(range(N)):
-        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_keys, cardpair_answer_lookup, return_gt=True)
+        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(
+            num_keys, num_attributes, num_attr_vals, cardpair_answer_lookup)
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)

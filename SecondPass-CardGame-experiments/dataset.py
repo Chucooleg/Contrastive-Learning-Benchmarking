@@ -5,7 +5,8 @@ import random
 
 
 from dataraw_sampling import (
-    sample_one_training_datapoint,
+    sample_one_training_datapoint_derive_prop,
+    sample_one_training_datapoint_lookup,
     construct_cardpair_answer_lookup,
     )
 
@@ -65,7 +66,12 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
 
         self.batch_size = hparams['batch_size']
         self.num_keys = hparams['num_attr_vals']**hparams['num_attributes']
-        self.cardpair_answer_lookup = construct_cardpair_answer_lookup(self.num_attributes, self.num_attr_vals)
+        if self.num_attributes > 7:
+            self.cardpair_answer_lookup = None
+            self.sample_one_training_datapoint = sample_one_training_datapoint_derive_prop
+        else:
+            self.cardpair_answer_lookup = construct_cardpair_answer_lookup(self.num_attributes, self.num_attr_vals)
+            self.sample_one_training_datapoint = sample_one_training_datapoint_lookup
         
     def __len__(self):
         return self.batch_size * 2
@@ -73,7 +79,8 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
     def __getitem__(self, idx):
 
         # list, list if vocab_by_property else int 
-        y_vocab_tokens, x_vocab_tokens, gt_idxs = sample_one_training_datapoint(self.num_keys, self.cardpair_answer_lookup, return_gt=True)
+        y_vocab_tokens, x_vocab_tokens, gt_idxs = self.sample_one_training_datapoint(
+            self.num_keys, self.num_attributes, self.num_attr_vals, self.cardpair_answer_lookup)
 
         # list of integers
         gt_binary_tensor = self.make_gt_binary(gt_idxs)
