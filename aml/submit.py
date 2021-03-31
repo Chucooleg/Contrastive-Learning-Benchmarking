@@ -13,13 +13,6 @@ def _get_ws():
     return azureml.core.Workspace.from_config(path=config_path)
 
 
-def _get_experiment_name(debug):
-    if debug:
-        return 'buns_exp_debug'
-    else:
-        return 'buns_exp'
-
-
 def _get_environment(gpu, debug):
     conda = azureml.core.conda_dependencies.CondaDependencies()
 
@@ -70,8 +63,6 @@ def submit_job(debug, cluster, tags):
 
     LOG.debug('looking up workspace')
     ws = _get_ws()
-    experiment_name = _get_experiment_name(debug)
-    experiment = azureml.core.Experiment(workspace=ws, name=experiment_name)
     if debug:
         gpu = 0
     else:
@@ -90,13 +81,19 @@ def submit_job(debug, cluster, tags):
     absolute_config_path = (source_directory / rel_script_path).parent / rel_config_path
     _request_signoff(absolute_config_path)
 
+    # project_name = 'ContrastiveLearning-SET-Wildcard-Expand-SetOp-81' ## !! Update this
+    # dataset_name = 'WildCardSETidxSetOps-4Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
+
+    project_name = 'ContrastiveLearning-SET-Wildcard-Expand-Union-81' ## !! Update this
+    dataset_name = 'WildCardSETidxUnion-4Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
+
     run_config = azureml.core.ScriptRunConfig(
         source_directory=source_directory,
         script=rel_script_path,
         arguments=[
-            '--project_name', 'ContrastiveLearning-simple-SET-Wildcard-9',
-            '--dataset_name', 'WildCardSETidx-2Attr-3Vals-0Train-5120Val-5120Test',
+            '--project_name', project_name,
             '--config_path', rel_config_path,
+            '--dataset_name', dataset_name,
             '--mode', 'train',
             '--gpu', str(gpu),
             '--aml'
@@ -104,6 +101,8 @@ def submit_job(debug, cluster, tags):
         compute_target=compute_target,
         environment=environment,
     )
+
+    experiment = azureml.core.Experiment(workspace=ws, name=project_name)
 
     LOG.debug('submitting job')
     return experiment.submit(config=run_config, tags=tags)
@@ -147,3 +146,25 @@ if __name__ == '__main__':
     run = submit_job(args.debug, args.cluster, tags)
     LOG.info('waiting for job to complete...')
     run.wait_for_completion(show_output=True)
+
+
+
+
+
+
+# # Steps to run training
+# 1. `conda activate aml`
+# 2. `cd ~/aml`
+# 3. To do a local run: `python run/submit.py --debug`
+# 4. To do a cloud run: `python run/submit.py --tag xyz`
+
+# # Steps to add a new dataset
+# 1. Go to the datasets section in AML Studio: https://ml.azure.com/data?wsid=/subscriptions/9f437c2f-8971-40f4-a021-cdba0cb08b80/resourcegroups/aml-rg/workspaces/legg-aml-ws&tid=959fafed-f244-49fc-823e-859ed39ca98d
+# 2. Click "Create dataset" > "From local files"
+# 3. Fill in dataset name.  Select "File" for dataset type.  Click "Next".
+# 4. Select the "Currently selected datastore" bullet, and then click "Browse" and select the file(s) you want to use for your dataset.  Click "Next", then "Create".
+
+
+
+# Check experiments
+# https://ml.azure.com/experiments?wsid=/subscriptions/9f437c2f-8971-40f4-a021-cdba0cb08b80/resourcegroups/aml-rg/workspaces/legg-aml-ws&tid=959fafed-f244-49fc-823e-859ed39ca98d

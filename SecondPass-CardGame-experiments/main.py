@@ -417,3 +417,10 @@ if __name__ == '__main__':
     wandb_login(args.aml)
 
     main(args)
+
+
+# Local
+# python main.py --project_name 'ContrastiveLearning-SET-Wildcard-Expand-SetOp-27' --data_path '/app/Contrastive-Learning-Benchmarking/Raw_Datasets/SET/WildCardSETidxSetOps-3Attr-3Vals-8Pairs-0Train-5120Val-5120Test.json' --mode train --config_path /app/Contrastive-Learning-Benchmarking/SecondPass-CardGame-experiments/config.json --checkpoint_dir checkpoints/ --gpu 1 --approve_before_training
+
+
+# AML, go to ../submit.py
