@@ -65,7 +65,7 @@ def _request_signoff(config_path):
         raise RuntimeError('bun bun disapproved!')
 
 
-def submit_job(debug, cluster):
+def submit_job(debug, cluster, tags):
     LOG.debug(f'debug mode: {debug}')
 
     LOG.debug('looking up workspace')
@@ -106,7 +106,7 @@ def submit_job(debug, cluster):
     )
 
     LOG.debug('submitting job')
-    return experiment.submit(config=run_config)
+    return experiment.submit(config=run_config, tags=tags)
 
 
 def _configure_logging():
@@ -132,11 +132,20 @@ if __name__ == '__main__':
         '--cluster',
         help='Name of the cluster, e.g. k80-cluster or v100-cluster',
     )
+    argparser.add_argument(
+        '--tags',
+        help='tags to add to the run.  should be comma-separated, e.g. --tags tag1,tag2,tag3',
+    )
     args = argparser.parse_args()
 
     if args.cluster is None and not args.debug:
         raise ValueError('cluster needs to be specified when not running in debug mode')
 
-    run = submit_job(args.debug, args.cluster)
+    if args.tags is None:
+        tags = None
+    else:
+        tags = {tag: '' for tag in args.tags.split(',')}
+
+    run = submit_job(args.debug, args.cluster, tags)
     LOG.info('waiting for job to complete...')
     run.wait_for_completion(show_output=True)
