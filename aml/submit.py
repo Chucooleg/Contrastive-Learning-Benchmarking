@@ -9,7 +9,7 @@ LOG = logging.getLogger(__name__)
 
 
 def _get_ws():
-    config_path = pathlib.Path(__file__).parent.parent / 'config.json'
+    config_path = pathlib.Path(__file__).parent / 'config.json'
     return azureml.core.Workspace.from_config(path=config_path)
 
 
