@@ -390,21 +390,21 @@ if __name__ == '__main__':
     # parser
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--project_name', type=str)
+    parser.add_argument('--project_name', type=str, required=True)
     parser.add_argument('--data_path', help='path to data json file')
-    parser.add_argument('--mode', help='train, resume_train, test')
+    parser.add_argument('--mode', help='train, resume_train, test', required=True)
     parser.add_argument('--dataset_name', help='name of dataset')
     # new training
-    parser.add_argument('--config_path', default=None, help='path to config.json, must provide if starting new training.  '
+    parser.add_argument('--config_path', help='path to config.json, must provide if starting new training.  '
                         'If running in AML, path should be relative to this file.')
-    parser.add_argument('--checkpoint_dir', default=None, help='path to save New checkpoints, must provide if starting new training.')
+    parser.add_argument('--checkpoint_dir', help='path to save New checkpoints, must provide if starting new training.')
     # resume / testing
-    parser.add_argument('--resume_max_epochs', default=None, help='must provide if resume training or testing')
-    parser.add_argument('--resume_checkpoint_dir', default=None, help='path to resume config & checkpoint from and save to.')
-    parser.add_argument('--ckpt_name', default=None, help='must provide if resume training or testing. Such as last.ckpt')
-    parser.add_argument('--runID', default=None, help='wandb RunID must provide if resume training or testing')
+    parser.add_argument('--resume_max_epochs', help='must provide if resume training or testing')
+    parser.add_argument('--resume_checkpoint_dir', help='path to resume config & checkpoint from and save to.')
+    parser.add_argument('--ckpt_name', help='must provide if resume training or testing. Such as last.ckpt')
+    parser.add_argument('--runID', help='wandb RunID must provide if resume training or testing')
 
-    parser.add_argument('--gpu', help='gpu id', type=int)
+    parser.add_argument('--gpu', help='gpu id', type=int, required=True)
 
     parser.add_argument(
         '--approve_before_training', help='Prompt for user to approve model configuration for training.', action='store_true'
