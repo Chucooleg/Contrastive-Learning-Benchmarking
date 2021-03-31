@@ -7,6 +7,8 @@ import random
 from dataraw_sampling import (
     sample_one_training_datapoint, 
     construct_card_idx_lookup,
+    draw_N_cardpairs_union_only,
+    draw_N_cardpairs_union_symdiff
     )
 
 # Delete later
@@ -26,9 +28,9 @@ class GameDatasetFromDataPoints(Dataset):
         self.debug = hparams['debug']
         self.num_attributes = hparams['num_attributes']
         self.num_attr_vals = hparams['num_attr_vals']
-        self.nest_depth_int = hparams['nest_depth_int']
         self.key_support_size = hparams['key_support_size']
         self.vocab_by_property = hparams['vocab_by_property']
+        self.N_pairs = hparams['N_pairs']
         self.OpenP = hparams['(']
         self.CloseP = hparams[')']
         self.NULL = hparams['NULL']
@@ -37,7 +39,7 @@ class GameDatasetFromDataPoints(Dataset):
         self.EOS = hparams['EOS']
         self.PAD = hparams['PAD']
         self.PLH = hparams['PLH']
-        self.N_pairs = hparams['N_pairs']
+        
 
     def make_gt_binary(self, gt_idxs):
         gt_binary = torch.zeros(self.key_support_size)
@@ -64,20 +66,33 @@ class GameDatasetTrainDataset(GameDatasetFromDataPoints):
             'EOS': hparams['EOS'],
             'PAD': hparams['PAD'],
             'PLH': hparams['PLH'],
-            '&': hparams['&'],
             '|': hparams['|'],
+            '!': hparams['!'],
         }
 
         self.batch_size = hparams['batch_size']
-        self.card2idx_lookup, idx2card_lookup = construct_card_idx_lookup(self.num_attributes, self.num_attr_vals)
-        
+        self.card2idx_lookup, _ = construct_card_idx_lookup(self.num_attributes, self.num_attr_vals)
+        self.card2idx_lookup = {**self.card2idx_lookup, **self.symbol_vocab_token_lookup}
+        self.sample_one_training_datapoint = sample_one_training_datapoint
+        if hparams['union_only']:
+            self.draw_N_pairs_fn = draw_N_cardpairs_union_only
+        else:
+            self.draw_N_pairs_fn = draw_N_cardpairs_union_symdiff
+
+
     def __len__(self):
         return self.batch_size * 2
             
     def __getitem__(self, idx):
 
         # list, list if vocab_by_property else int 
-        y_vocab_tokens, x_vocab_tokens, gt_idxs = sample_one_training_datapoint(self.num_attributes, self.num_attr_vals, self.card2idx_lookup, self.N_pairs)
+        y_vocab_tokens, x_vocab_tokens, gt_idxs = self.sample_one_training_datapoint(
+            num_attributes=self.num_attributes, 
+            num_attr_vals=self.num_attr_vals, 
+            card2idx_lookup=self.card2idx_lookup, 
+            N_pairs=self.N_pairs,
+            draw_N_pairs_fn=self.draw_N_pairs_fn
+            )
 
         # list of integers
         gt_binary_tensor = self.make_gt_binary(gt_idxs)

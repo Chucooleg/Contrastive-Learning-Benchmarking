@@ -235,8 +235,8 @@ def sample_queries(num_attributes, num_attr_vals, N_train, N_val, N_test):
         'EOS': base_vocab_size + 5,
         'PAD': base_vocab_size + 6,
         'PLH': base_vocab_size + 7,
-        '&': base_vocab_size + 8,
-        '|': base_vocab_size + 9,
+        '|': base_vocab_size + 8,
+        '!': base_vocab_size + 9,
     }
     
     max_len_q = 2

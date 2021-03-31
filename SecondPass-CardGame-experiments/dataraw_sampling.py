@@ -83,7 +83,7 @@ def resolve(card1_prop, card2_prop, all_vals_list, all_vals_set):
     return answer cards
     '''
     ind_ans = [resolve_prop(prop1, prop2, all_vals_list, all_vals_set) for prop1, prop2 in zip(card1_prop, card2_prop)]
-    return list(itertools.product(*ind_ans))
+    return itertools.product(*ind_ans)
 
 def draw_cardpair_props(num_attributes, num_attr_vals):
     all_vals_tuple = (0,1,2) 
@@ -95,16 +95,42 @@ def draw_cardpair_props(num_attributes, num_attr_vals):
 
     return card1_prop, card2_prop, keys_prop
 
-def draw_N_cardpairs(num_attributes, num_attr_vals, N):
-    # union answers from N pairs
+def draw_N_cardpairs_union_only(num_attributes, num_attr_vals, N):
+    # union answer subsets from N pairs
     all_key_subsets = []  # list of tuples, each one card
     all_query_pairs = []
     for i in range(N):
         card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
-        all_query_pairs += [card1_prop, card2_prop]
-        all_key_subsets += keys_prop
+        all_query_pairs += [tuple(card1_prop), tuple(card2_prop)]
+        all_key_subsets += list(keys_prop)
     ans_key_subset = set(all_key_subsets)
     return all_query_pairs, ans_key_subset, len(ans_key_subset)    
+
+set_fns = {
+    '|': lambda x,y: x | y,
+    # '&': lambda x,y: x & y,
+    # '-': lambda x,y: x - y,
+    '!': lambda x,y: x.symmetric_difference(y)
+}
+
+def draw_N_cardpairs_union_symdiff(num_attributes, num_attr_vals, N):
+    # union or symdiff answer subsets from N pairs
+    last_keys_prop = None
+
+    all_query_pairs_and_ops = []
+    for i in range(N):
+        # set_op = random.choice(('|', '&', '-', '!')) -- not enough subsets
+        set_op = random.choice(('|', '!'))
+
+        card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
+        all_query_pairs_and_ops += [tuple(card1_prop), tuple(card2_prop), set_op]
+        if not last_keys_prop:
+            last_keys_prop = set(keys_prop)
+        else:
+            last_keys_prop = set_fns[set_op](last_keys_prop, set(keys_prop))
+
+    # ans_key_subset = set(all_key_subsets)
+    return all_query_pairs_and_ops, last_keys_prop, len(last_keys_prop)    
 
 def construct_card_idx_lookup(num_attributes, num_attr_vals):
     
@@ -131,14 +157,13 @@ def construct_card_idx_lookup(num_attributes, num_attr_vals):
 
 ####################################################################################
 
-def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup, N_pairs):
+def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup, N_pairs, draw_N_pairs_fn):
     '''Wrong sampling props for training.'''
 
     # card1_prop, card2_prop, keys_prop = draw_cardpair_props(num_attributes, num_attr_vals)
-    query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=N_pairs)
+    query_props, key_props, keys_len = draw_N_pairs_fn(num_attributes, num_attr_vals, N_pairs)
 
-    # 6 tokens
-    q_vocab_tokens = [card2idx_lookup[tuple(qp)] for qp in query_props]
+    q_vocab_tokens = [card2idx_lookup[qp] for qp in query_props]
 
     gt_ks_idx = [card2idx_lookup[kp] for kp in key_props]
 
@@ -146,19 +171,18 @@ def sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2i
     return q_vocab_tokens, None, gt_ks_idx
 
 
-def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup, N_pairs):
+def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup, N_pairs, draw_N_pairs_fn):
     '''Rejection Sampling'''
 
     success = False 
 
     while not success:
 
-        query_props, key_props, keys_len = draw_N_cardpairs(num_attributes, num_attr_vals, N=N_pairs)
+        query_props, key_props, keys_len = draw_N_pairs_fn(num_attributes, num_attr_vals, N=N_pairs)
         if random.random() <= (keys_len *1.0 / (num_attr_vals**num_attributes)):
             success = True
 
-    # 6 tokens
-    q_vocab_tokens = [card2idx_lookup[tuple(qp)] for qp in query_props]
+    q_vocab_tokens = [card2idx_lookup[qp] for qp in query_props]
 
     gt_ks_idx = [card2idx_lookup[kp] for kp in key_props]
     k_vocab_tokens = random.choice(gt_ks_idx)
@@ -167,19 +191,8 @@ def sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup
     return q_vocab_tokens, [k_vocab_tokens], gt_ks_idx
 
 
-# def sample_one_training_datapoint(all_query_and_keys):
-#     '''from pxy'''
 
-#     idx = np.random.choice(len(all_query_and_keys))
-#     q_vocab_tokens = all_query_and_keys[idx][0]
-#     k_vocab_tokens = all_query_and_keys[idx][1]
-#     gt_ks_idx = all_query_and_keys[idx][2]
-
-#     # list, list, list
-#     return q_vocab_tokens, k_vocab_tokens, gt_ks_idx
-
-
-def sample_queries(num_attributes, num_attr_vals, N_pairs, N_train, N_val, N_test):
+def sample_queries(num_attributes, num_attr_vals, N_pairs, union_only, N_train, N_val, N_test):
     '''Simple SET'''
 
     num_keys = num_attr_vals**num_attributes
@@ -194,6 +207,7 @@ def sample_queries(num_attributes, num_attr_vals, N_pairs, N_train, N_val, N_tes
 
     start_time = time.time()
     card2idx_lookup, idx2card_lookup = construct_card_idx_lookup(num_attributes, num_attr_vals)
+    assert len(card2idx_lookup) == (num_attr_vals+1)**num_attributes
     print('Time to build cardpair_answer_lookup:', time.time()-start_time, 'seconds')
 
     base_vocab_size =  (num_attr_vals+1)**num_attributes # include * cards
@@ -206,14 +220,20 @@ def sample_queries(num_attributes, num_attr_vals, N_pairs, N_train, N_val, N_tes
         'EOS': base_vocab_size + 5,
         'PAD': base_vocab_size + 6,
         'PLH': base_vocab_size + 7,
-        '&': base_vocab_size + 8,
-        '|': base_vocab_size + 9,
+        '|': base_vocab_size + 8,
+        '!': base_vocab_size + 9,
     }
-    
+    card2idx_lookup = {**card2idx_lookup, **symbol_vocab_token_lookup}
+
+    if union_only:
+        draw_N_pairs_fn = draw_N_cardpairs_union_only
+    else:
+        draw_N_pairs_fn = draw_N_cardpairs_union_symdiff
+
     max_len_q = 2
     for i in tqdm(range(N)):
 
-        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup, N_pairs)
+        q_vocab_tokens, k_vocab_tokens, gt_ks_idx = sample_one_training_datapoint(num_attributes, num_attr_vals, card2idx_lookup, N_pairs, draw_N_pairs_fn)
 
         tokens.append((q_vocab_tokens, k_vocab_tokens))
         gt_idxs.append(gt_ks_idx)
@@ -224,7 +244,7 @@ def sample_queries(num_attributes, num_attr_vals, N_pairs, N_train, N_val, N_tes
 
     for i in tqdm(range(N_test)):
 
-        q_vocab_tokens, _, gt_ks_idx = sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup, N_pairs)
+        q_vocab_tokens, _, gt_ks_idx = sample_one_testing_query_from_marginal(num_attributes, num_attr_vals, card2idx_lookup, N_pairs, draw_N_pairs_fn)
 
         test_marginal_tokens.append((q_vocab_tokens,))
         test_marginal_gt_idxs.append(gt_ks_idx)       
@@ -232,12 +252,10 @@ def sample_queries(num_attributes, num_attr_vals, N_pairs, N_train, N_val, N_tes
     data = {
         'num_attributes':num_attributes,
         'num_attr_vals':num_attr_vals,
-        'nest_depth_int': None,
         'key_support_size': num_keys,
-        'multiple_OR_sets_bool': None,
 
-        'query_length_multiplier': None,
         'N_pairs': N_pairs,
+        'union_only': union_only, 
         'max_len_q': max_len_q,
         'len_k': 1,
         
