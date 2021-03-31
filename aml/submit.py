@@ -65,7 +65,7 @@ def _request_signoff(config_path):
         raise RuntimeError('bun bun disapproved!')
 
 
-def submit_job(debug):
+def submit_job(debug, cluster):
     LOG.debug(f'debug mode: {debug}')
 
     LOG.debug('looking up workspace')
@@ -81,7 +81,7 @@ def submit_job(debug):
     if debug:
         compute_target = 'local'
     else:
-        compute_target = azureml.core.ComputeTarget(ws, 'v100-cluster')
+        compute_target = azureml.core.ComputeTarget(ws, cluster)
 
     source_directory=pathlib.Path.home() / 'Contrastive-Learning-Benchmarking'
     rel_script_path = 'SecondPass-CardGame-experiments/main.py'
@@ -128,8 +128,15 @@ if __name__ == '__main__':
         action='store_true',
         help='Runs the job locally instead of in the cluster',
     )
+    argparser.add_argument(
+        '--cluster',
+        help='Name of the cluster, e.g. k80-cluster or v100-cluster',
+    )
     args = argparser.parse_args()
 
-    run = submit_job(args.debug)
+    if args.cluster is None and not args.debug:
+        raise ValueError('cluster needs to be specified when not running in debug mode')
+
+    run = submit_job(args.debug, args.cluster)
     LOG.info('waiting for job to complete...')
     run.wait_for_completion(show_output=True)
