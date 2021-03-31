@@ -16,7 +16,8 @@ def construct_full_model(hparams):
     # embeddings
     querykey_embed_X = ScaledEmbedding(
         V=hparams['vocab_size'],
-        d_model=hparams['d_model'], 
+        d_model=hparams['d_model'],
+        vec_repr=hparams['vec_repr'],
         init_option='transformer'
     )
     embed_dropout = nn.Dropout(hparams['embed_dropout'])
