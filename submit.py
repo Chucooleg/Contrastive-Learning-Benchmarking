@@ -57,6 +57,14 @@ def _get_environment(gpu, debug):
     return env
 
 
+def _request_signoff(config_path):
+    with open(config_path) as f:
+        LOG.info(f'---------------\nconfig:\n\n{f.read()}\n---------------')
+    val = input("Continue training? (y/n)")
+    if not val.lower() in ('yes', 'y'):
+        raise RuntimeError('bun bun disapproved!')
+
+
 def submit_job(debug):
     LOG.debug(f'debug mode: {debug}')
 
@@ -75,13 +83,20 @@ def submit_job(debug):
     else:
         compute_target = azureml.core.ComputeTarget(ws, 'v100-cluster')
 
+    source_directory=pathlib.Path.home() / 'Contrastive-Learning-Benchmarking'
+    rel_script_path = 'SecondPass-CardGame-experiments/main.py'
+    rel_config_path = 'config.json'
+
+    absolute_config_path = (source_directory / rel_script_path).parent / rel_config_path
+    _request_signoff(absolute_config_path)
+
     run_config = azureml.core.ScriptRunConfig(
-        source_directory=pathlib.Path.home() / 'Contrastive-Learning-Benchmarking',
-        script='SecondPass-CardGame-experiments/main.py',
+        source_directory=source_directory,
+        script=rel_script_path,
         arguments=[
             '--project_name', 'ContrastiveLearning-simple-SET-Wildcard-9',
-            '--config_path', 'config.json',
             '--dataset_name', 'WildCardSETidx-2Attr-3Vals-0Train-5120Val-5120Test',
+            '--config_path', rel_config_path,
             '--mode', 'train',
             '--gpu', str(gpu),
             '--aml'
