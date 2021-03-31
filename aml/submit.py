@@ -130,6 +130,7 @@ if __name__ == '__main__':
     )
     argparser.add_argument(
         '--cluster',
+        default='v100-cluster',
         help='Name of the cluster, e.g. k80-cluster or v100-cluster',
     )
     argparser.add_argument(
@@ -137,9 +138,6 @@ if __name__ == '__main__':
         help='tags to add to the run.  should be comma-separated, e.g. --tags tag1,tag2,tag3',
     )
     args = argparser.parse_args()
-
-    if args.cluster is None and not args.debug:
-        raise ValueError('cluster needs to be specified when not running in debug mode')
 
     if args.tags is None:
         tags = None
