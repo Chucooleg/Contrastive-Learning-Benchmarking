@@ -85,7 +85,7 @@ def construct_full_model(hparams):
         NULL = hparams['NULL'],
         num_attributes = hparams['num_attributes'], 
         num_attr_vals = hparams['num_attr_vals'], 
-        repr_pos = hparams['representation_pos'],
+        repr_pos = -1,
         normalize_dotproduct = hparams['normalize_dotproduct'],
         debug = hparams['debug'],
     )
