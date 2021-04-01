@@ -257,7 +257,7 @@ def main(args):
             hparams['num_attr_vals']**hparams['num_attributes'],
             hparams['vec_repr'],
             hparams['N_enc'],
-            hparams['num_heads_key'],
+            hparams['num_heads'],
             Opt_str,
             round(max(model_summary.param_nums)/1000,2)
             )

@@ -6,7 +6,7 @@ import math
 from collections import OrderedDict
 
 from dataraw_sampling import decode_key_to_vocab_token
-from transformer import construct_transformer_encoder, ScaledEmbedding, LearnedPositionEncoder, Positiontwise_FF, LayerNorm
+from transformer import construct_transformer_encoder, construct_transformer_decoder, ScaledEmbedding, LearnedPositionEncoder, Positiontwise_FF, LayerNorm
 
 def construct_full_model(hparams):
     '''
@@ -30,7 +30,7 @@ def construct_full_model(hparams):
     embed_dropout = nn.Dropout(hparams['embed_dropout'])
 
     # encoders
-    query_encoder = construct_transformer_encoder(hparams)
+    query_encoder = construct_transformer_decoder(hparams)
     key_encoder = construct_transformer_encoder(hparams, key_bool=True) if hparams['vocab_by_property'] else None
 
     query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
