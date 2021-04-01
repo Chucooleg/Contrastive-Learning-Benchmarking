@@ -81,11 +81,17 @@ def submit_job(debug, cluster, tags):
     absolute_config_path = (source_directory / rel_script_path).parent / rel_config_path
     _request_signoff(absolute_config_path)
 
-    # project_name = 'ContrastiveLearning-SET-Wildcard-Expand-SetOp-81' ## !! Update this
-    # dataset_name = 'WildCardSETidxSetOps-4Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
+    # SET OPS
+    # project_name = 'ContrastiveLearning-SET-Wildcard-Expand-SetOp-27' ## !! Update this
+    # dataset_name = 'WildCardSETidxSetOps-3Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
 
-    project_name = 'ContrastiveLearning-SET-Wildcard-Expand-Union-81' ## !! Update this
-    dataset_name = 'WildCardSETidxUnion-4Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
+    # SET UNION
+    # project_name = 'ContrastiveLearning-SET-Wildcard-Expand-Union-27' ## !! Update this
+    # dataset_name = 'WildCardSETidxUnion-3Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
+
+    # 1 Wildcard
+    project_name = 'ContrastiveLearning-SET-Wildcard-27' ## !! Update this
+    dataset_name = 'WildCardSETidxUnion-3Attr-3Vals-1Pairs-0Train-5120Val-5120Test' ## !! Update this
 
     run_config = azureml.core.ScriptRunConfig(
         source_directory=source_directory,
@@ -129,7 +135,7 @@ if __name__ == '__main__':
     )
     argparser.add_argument(
         '--cluster',
-        default='v100-cluster',
+        default='k80-cluster',
         help='Name of the cluster, e.g. k80-cluster or v100-cluster',
     )
     argparser.add_argument(
@@ -155,8 +161,8 @@ if __name__ == '__main__':
 # # Steps to run training
 # 1. `conda activate aml`
 # 2. `cd ~/aml`
-# 3. To do a local run: `python run/submit.py --debug`
-# 4. To do a cloud run: `python run/submit.py --tag xyz`
+# 3. To do a local run: `python aml/submit.py --debug`
+# 4. To do a cloud run: `python aml/submit.py --tag xyz`
 
 # # Steps to add a new dataset
 # 1. Go to the datasets section in AML Studio: https://ml.azure.com/data?wsid=/subscriptions/9f437c2f-8971-40f4-a021-cdba0cb08b80/resourcegroups/aml-rg/workspaces/legg-aml-ws&tid=959fafed-f244-49fc-823e-859ed39ca98d
