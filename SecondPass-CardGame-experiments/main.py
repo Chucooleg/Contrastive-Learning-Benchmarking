@@ -22,14 +22,6 @@ from trainmodule import ContrastiveTrainModule, GenerativeTrainModule
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 
-# import azureml.core
-
-# # set the wandb API key to an environment variable and log in
-# run = azureml.core.Run.get_context()
-# os.environ['WANDB_API_KEY'] = run.get_secret(name='WANDBAPIKEY')
-# wandb.login()
-
-
 def load_data(data_path):
     with open(data_path, 'r') as f:
         data = json.load(f)

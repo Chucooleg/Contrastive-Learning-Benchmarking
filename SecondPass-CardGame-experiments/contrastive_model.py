@@ -14,13 +14,15 @@ def construct_full_model(hparams):
     # embeddings
     query_embed_X = ScaledEmbedding(
         V=hparams['vocab_size'],
-        d_model=hparams['d_model'], 
+        d_model=hparams['d_model'],
+        vec_repr=hparams['vec_repr'],
         init_option='transformer'
     )
     key_embed_X = ScaledEmbedding(
-        V=hparams['vocab_size'],
-        d_model=hparams['vec_repr'], 
-        init_option='w2v'
+        V=hparams['key_support_size'],
+        d_model=hparams['vec_repr'],
+        vec_repr=hparams['vec_repr'],
+        init_option='linear'
     )
 
     embed_dropout = nn.Dropout(hparams['embed_dropout'])
@@ -29,34 +31,8 @@ def construct_full_model(hparams):
     query_encoder = construct_transformer_encoder(hparams)
     key_encoder = construct_transformer_encoder(hparams, key_bool=True) if hparams['vocab_by_property'] else None
     
-    # original 
-    # query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
-
     query_projection = nn.Linear(hparams['d_model'],hparams['vec_repr'])
     key_projection = None
-
-    # # original
-    # key_projection = nn.Sequential(
-    #     nn.Linear(hparams['d_model'],hparams['d_model']),
-    #     nn.ReLU(),
-    #     nn.Linear(hparams['d_model'],hparams['vec_repr'])
-    # )
-
-    # with one layer norm d_model, d_ff, vec_repr
-    # key_projection = nn.Sequential(
-    #     nn.Linear(hparams['d_model'],hparams['d_ff']),
-    #     nn.ReLU(),
-    #     nn.Linear(hparams['d_ff'],hparams['vec_repr']),
-    #     LayerNorm(hparams['vec_repr'])
-    # )
-
-    # # with one layer norm d_model, d_model, vec_repr
-    # key_projection = nn.Sequential(
-    #     nn.Linear(hparams['d_model'],hparams['d_model']),
-    #     nn.ReLU(),
-    #     nn.Linear(hparams['d_model'],hparams['vec_repr']),
-    #     LayerNorm(hparams['vec_repr'])
-    # )
 
     position_encoder = LearnedPositionEncoder(
         d_model=hparams['d_model'], 
@@ -149,15 +125,38 @@ class EncoderPredictor(nn.Module):
         if self.vocab_by_property:
             assert self.key_encoder
         self.setup_all_keys()
+        self.setup_all_keys_bias_terms()
 
     def setup_all_keys(self):
 
-        all_keys = np.arange(self.key_support_size).reshape(-1, 1)
+        if self.vocab_by_property:
+            all_keys = np.empty((self.key_support_size, 1 + self.len_k + 1)) # +1: add <SOS>, <EOS> token
+            for key_idx in range(self.key_support_size):
+                key_properties = decode_key_to_vocab_token(self.num_attributes, self.num_attr_vals, key_idx)
+                all_keys[key_idx, :] = np.concatenate([[self.SOS], key_properties, [self.EOS]])
+        else:
+            all_keys = np.arange(self.key_support_size).reshape(-1, 1)
         # register all keys (for testing)
         self.register_buffer(
             name='all_keys',
             tensor= torch.tensor(all_keys, dtype=torch.long)
         )
+
+    def setup_all_keys_bias_terms(self):
+        # reference : https://pytorch.org/docs/stable/generated/torch.nn.Linear.html
+        self.key_bias_terms = nn.Parameter(
+            nn.init.uniform_(torch.empty(self.key_support_size), a=-(np.sqrt(1./self.vec_repr)), b=(np.sqrt(1./self.vec_repr)))
+        )
+
+    def get_bias_terms(self, X_key=None, from_support=False):
+        assert X_key is not None or from_support
+
+        if from_support:
+            # shape(1, key_support_size)
+            return self.key_bias_terms.view(1, -1)
+        else:
+            # shape(1, X_key.shape[0]=batch_size)
+            return self.key_bias_terms[X_key.squeeze(-1)].view(1, -1)
 
     def validate_arguments(self):
         if self.query_encoder or self.key_encoder:
@@ -204,7 +203,7 @@ class EncoderPredictor(nn.Module):
         else:
             if debug: print('Using dot-product, NOT Classifier')
             # shape(b, b) dotproduct=logit matrix
-            logits = torch.matmul(query_repr, key_repr.T)
+            logits = torch.matmul(query_repr, key_repr.T) + self.get_bias_terms(X_key=X_key, from_support=False)
             # normalize into cosine distance
             if self.normalize_dotproduct:
                 # shape (b, )
@@ -250,7 +249,7 @@ class EncoderPredictor(nn.Module):
             logits = logits.squeeze(1).reshape(b, self.key_support_size)
         else:
             # shape(b, size(support)) dotproduct=logit matrix
-            logits = torch.matmul(query_repr, keys_repr.T)
+            logits = torch.matmul(query_repr, keys_repr.T) + self.get_bias_terms(X_key=None, from_support=True)
             # normalize into cosine distance
             if self.normalize_dotproduct:
                 # shape (b, )
