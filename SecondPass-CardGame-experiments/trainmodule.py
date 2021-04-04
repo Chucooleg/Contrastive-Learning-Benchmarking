@@ -291,23 +291,42 @@ class GenerativeTrainModule(TrainModule):
 
     def configure_optimizers(self):
 
-        opt = LRScheduledAdam(
-            params=self.model.parameters(),
-            d_model=self.hparams['d_model'], 
-            warmup_steps=self.hparams['scheduled_adam_warmup_steps'],
-            lr=0.,
-            betas=(
-                self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
-            eps=self.hparams['scheduled_adam_epsilon'],
-            correct_bias=True,
-            decay_lr=self.hparams["additional_lr_decay"],
-            decay_lr_starts=self.hparams["decay_lr_starts"], 
-            decay_lr_stops=self.hparams['decay_lr_stops'],
-            decay_lr_interval=self.hparams["decay_lr_interval"], 
-            decay_gamma=self.hparams["additional_lr_decay_gamma"],
-            overall_lr_scale=self.hparams['generative_overall_lr_scale']
-        )
-        return opt
+        assert self.hparams['generative_optimizer'] in ('scheduled_adam', 'cosine_annealing')
+        
+        if self.hparams['generative_optimizer'] == 'cosine_annealing':
+            opt = torch.optim.Adam(
+                params=self.model.parameters(),
+                lr=self.hparams['adam_lr'],
+                betas=(
+                    self.hparams['adam_beta1'], self.hparams['adam_beta2']),
+                eps=self.hparams['adam_epsilon'],
+                weight_decay=self.hparams['adam_weight_decay']
+            )
+            
+            # https://pytorch.org/docs/stable/optim.html#torch.optim.lr_scheduler.CosineAnnealingLR
+            # https://discuss.pytorch.org/t/how-to-implement-torch-optim-lr-scheduler-cosineannealinglr/28797/6
+            sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=self.hparams['cosine_annealing_T_max'])
+
+            return [opt], [sched]  
+
+        else:
+            opt = LRScheduledAdam(
+                params=self.model.parameters(),
+                d_model=self.hparams['d_model'], 
+                warmup_steps=self.hparams['scheduled_adam_warmup_steps'],
+                lr=0.,
+                betas=(
+                    self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
+                eps=self.hparams['scheduled_adam_epsilon'],
+                correct_bias=True,
+                decay_lr=self.hparams["additional_lr_decay"],
+                decay_lr_starts=self.hparams["decay_lr_starts"], 
+                decay_lr_stops=self.hparams['decay_lr_stops'],
+                decay_lr_interval=self.hparams["decay_lr_interval"], 
+                decay_gamma=self.hparams["additional_lr_decay_gamma"],
+                overall_lr_scale=self.hparams['generative_overall_lr_scale']
+            )
+            return opt
 
 
 class ContrastiveTrainModule(TrainModule):

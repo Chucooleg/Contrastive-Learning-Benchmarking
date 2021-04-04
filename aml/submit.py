@@ -86,12 +86,12 @@ def submit_job(debug, cluster, tags):
     # dataset_name = 'WildCardSETidxSetOps-3Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
 
     # SET UNION
-    # project_name = 'ContrastiveLearning-SET-Wildcard-Expand-Union-27' ## !! Update this
-    # dataset_name = 'WildCardSETidxUnion-3Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
+    project_name = 'ContrastiveLearning-SET-Wildcard-Expand-Union-81' ## !! Update this
+    dataset_name = 'WildCardSETidxUnion-4Attr-3Vals-8Pairs-0Train-5120Val-5120Test' ## !! Update this
 
     # 1 Wildcard
-    project_name = 'ContrastiveLearning-SET-Wildcard-27' ## !! Update this
-    dataset_name = 'WildCardSETidxUnion-3Attr-3Vals-1Pairs-0Train-5120Val-5120Test' ## !! Update this
+    # project_name = 'ContrastiveLearning-SET-Wildcard-27' ## !! Update this
+    # dataset_name = 'WildCardSETidxUnion-3Attr-3Vals-1Pairs-0Train-5120Val-5120Test' ## !! Update this
 
     run_config = azureml.core.ScriptRunConfig(
         source_directory=source_directory,
@@ -135,7 +135,7 @@ if __name__ == '__main__':
     )
     argparser.add_argument(
         '--cluster',
-        default='k80-cluster',
+        default='v100-cluster',
         help='Name of the cluster, e.g. k80-cluster or v100-cluster',
     )
     argparser.add_argument(
