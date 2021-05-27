@@ -123,7 +123,7 @@ def load_hparams(args, data):
     if args.mode == 'resume_train':
         hparams['max_epochs'] = int(args.resume_max_epochs)
 
-    if args.mode in ('resume_train', 'test', 'test_marginal'):
+    if args.mode in ('resume_train', 'test', 'test_marginal', 'pull_repr'):
         hparams['resume_checkpoint_dir'] = args.resume_checkpoint_dir 
 
     print('----------hparams----------')
@@ -348,7 +348,7 @@ def main(args):
     if args.aml:
         checkpoint_dir = './outputs'
     else:
-        checkpoint_dir = args.checkpoint_dir
+        checkpoint_dir = args.checkpoint_dir if args.mode == 'train' else args.resume_checkpoint_dir
 
     # check point path
     if args.mode == 'train':
@@ -392,7 +392,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--project_name', type=str, required=True)
     parser.add_argument('--data_path', help='path to data json file')
-    parser.add_argument('--mode', help='train, resume_train, test', required=True)
+    parser.add_argument('--mode', help='train, resume_train, test, test_marginal', required=True)
     parser.add_argument('--dataset_name', help='name of dataset')
     # new training
     parser.add_argument('--config_path', help='path to config.json, must provide if starting new training.  '

@@ -206,3 +206,34 @@ class GameTestFullDataset(GameDatasetFromDataPoints):
                 torch.tensor([self.SOS] + y_vocab_tokens + [self.EOS]).long(), # query
                 gt_binary_tensor, # all gt key ids
             )
+
+
+class BatchFetcher():
+
+    def __init__(self, raw_data, device):
+        self.raw_data = raw_data
+        self.device = device
+        self.EOS = raw_data['symbol_vocab_token_lookup']['EOS']
+        self.SOS = raw_data['symbol_vocab_token_lookup']['SOS']
+        self.num_attributes = raw_data['num_attributes']
+        self.num_attr_vals = raw_data['num_attr_vals']
+        self.card2idx_lookup, self.idx2card_lookup = construct_card_idx_lookup(self.num_attributes, self.num_attr_vals)
+
+    def make_query_batch(self, X_query_properties=None, X_key_properties=None, X_key=None):
+        assert not (X_key_properties is not None and X_key is not None)
+
+        if X_query_properties:
+            b = len(X_query_properties)
+            X_query = torch.tensor([[self.card2idx_lookup[qp] for qp in q] for q in X_query_properties], device=self.device).long()
+            X_query = torch.cat([torch.ones((b,1), device=self.device) * self.SOS, X_query, torch.ones((b,1), device=self.device) * self.EOS], dim=-1).long()
+        else:
+            X_query = None
+
+        if X_key_properties:
+            X_key = torch.tensor([[self.card2idx_lookup[kp] for kp in q] for q in X_key_properties], device=self.device).long()
+        elif X_key:
+            X_key = torch.tensor(X_key, device=self.device).long()
+        else:
+            X_key = None
+
+        return X_query, X_key

@@ -7,7 +7,7 @@
 
     "d_model": 512,
     "embed_dropout": 0.0,
-    "vec_repr": 32,
+    "vec_repr": 64,
 
     "model": "contrastive",
 
@@ -34,7 +34,7 @@
     "generative_optimizer": "scheduled_adam",
     "cosine_annealing_T_max": 300,
 
-    "adam_lr": 1e-04,
+    "adam_lr": 1e-06,
     "adam_beta1": 0.9,
     "adam_beta2": 0.999,
     "adam_epsilon": 1e-08,

@@ -80,9 +80,11 @@ class TrainModule(pl.LightningModule):
         # log metrics
         epoch_metrics = {}
         metric_names = outputs[0].keys()
+        full_kl_loss, full_logits = [], []
+
         for m in metric_names:
 
-            if not ('max_memory_alloc_cuda' in m ):
+            if not ('max_memory_alloc_cuda' in m) and not ('full_' in m):
                 if isinstance(outputs[0][m], torch.Tensor):
                     # epoch_metrics['avg_'+m] = torch.stack([x[m] for x in outputs]).mean()
                     # epoch_metrics['avg_'+m] = torch.stack([x.get(m, torch.tensor(0.).type_as(outputs[0]['val_loss'])) for x in outputs]).sum() / sum([float(m in x) for x in outputs])
@@ -94,8 +96,18 @@ class TrainModule(pl.LightningModule):
                     epoch_metrics['avg_'+m] = sum([x.get(m, 0.)*x['batch_size'] for x in outputs]) / sum([float(m in x)*x['batch_size'] for x in outputs])
                 else:
                     import pdb; pdb.set_trace()
-        
+            elif ('full_' in m):
+                if m == 'full_kl_loss':
+                    full_kl_loss += [x[m].tolist() for x in outputs]
+                elif m == 'full_logits':
+                    full_logits += [x[m].tolist() for x in outputs]
+
         self.log_metrics(epoch_metrics)
+        epoch_metrics = {
+            **epoch_metrics,
+            **{'full_kl_loss': full_kl_loss},
+            **{'full_logits': full_logits}
+        }
         return epoch_metrics         
     
     def test_epoch_end(self, outputs):        
@@ -103,7 +115,7 @@ class TrainModule(pl.LightningModule):
         test_metrics_save_path = os.path.join(self.hparams['resume_checkpoint_dir'], 'test_metrics.json')
         with open(test_metrics_save_path, 'w') as f:
             json.dump(averaged_metrics, f)
-        print(averaged_metrics)
+        print({averaged_metrics[m] for m in averaged_metrics if 'full_' not in m})
         print('Also saved to :', test_metrics_save_path)
 
 
@@ -353,7 +365,15 @@ class ContrastiveTrainModule(TrainModule):
         self.softmax = nn.Softmax(dim=-1)
         
     ###################################################
+    def pull_repr(self, X_query=None, X_key=None):
+        with torch.no_grad():
+            # (b, vec_repr)
+            query_repr = self.model.encode_query(X_query) if X_query is not None else None
+            # (b, vec_repr)
+            key_repr = self.model.encode_key(X_key) if X_key is not None else None
+            return query_repr, key_repr
 
+    ###################################################
     def forward(self, X_query, X_key, gt_binary, val_bool, full_test_bool=False, debug=False):
         '''
         X_query: (b, lenq)
@@ -370,9 +390,10 @@ class ContrastiveTrainModule(TrainModule):
 
         # scalar, shape(b,)
         if val_bool:
-            loss = self.KLdiv_criterion(
+            loss, full_loss = self.KLdiv_criterion(
                 logits=logits,
-                gt_binary=gt_binary
+                gt_binary=gt_binary,
+                full_test_bool=full_test_bool
             )
             if not full_test_bool:
                 ce_loss = self.CE_criterion(
@@ -388,6 +409,7 @@ class ContrastiveTrainModule(TrainModule):
                 X_keyId=X_key,
                 debug=debug,
             )
+            full_loss = None
             ce_loss = None
 
         # shape (b,support)
@@ -412,7 +434,7 @@ class ContrastiveTrainModule(TrainModule):
 
         metrics = {**metrics, **debug_metrics} if val_bool else None 
 
-        return logits, loss, ce_loss, metrics
+        return logits, loss, ce_loss, metrics, full_loss
     
     ###################################################
 
@@ -423,11 +445,11 @@ class ContrastiveTrainModule(TrainModule):
         # gt_binary = None
 
         # scalar
-        _, nce_loss, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
+        _, nce_loss, _, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
 
         with torch.no_grad():
             if (self.current_epoch+1) % self.val_every_n_epoch == 0:
-                _, kl_loss, ce_loss, metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
+                _, kl_loss, ce_loss, metrics, _ = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
             else:
                 kl_loss = None
                 ce_loss = None
@@ -454,8 +476,8 @@ class ContrastiveTrainModule(TrainModule):
 
         # (b, len_q), (b, ), (b, support size)
         X_query, X_key, gt_binary = batch
-        _, nce_loss, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
-        _, kl_loss, ce_loss, metrics = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
+        _, nce_loss, _, _, _ = self(X_query, X_key, gt_binary, val_bool=False, debug=self.debug)
+        _, kl_loss, ce_loss, metrics, _ = self(X_query, X_key, gt_binary, val_bool=True, debug=self.debug)
 
         # log 
         step_metrics = {
@@ -479,16 +501,21 @@ class ContrastiveTrainModule(TrainModule):
         X_key = None
         
         # compute scores for all keys
-        # shape(b, key_support_size), _, dictionary
-        logits, kl_loss, _, metrics = self(X_query, X_key, gt_binary, val_bool=True, full_test_bool=True, debug=self.debug)     
+        # shape(b, key_support_size), scalar, _, dictionary, shape(b, key_support_size)
+        logits, kl_loss, _, metrics, full_kl_loss = self(X_query, X_key, gt_binary, val_bool=True, full_test_bool=True, debug=self.debug)     
         
         # log
         step_metrics = {
             **{'test_KL_loss':kl_loss, 'test_KL_loss_per_example': kl_loss/X_query.shape[0]},
-            **{'test_'+m:metrics[m] for m in metrics},
+            **{'test_'+m:metrics[m] for m in metrics}
         }
         self.log_metrics(step_metrics)
-        step_metrics = {**step_metrics, **({'batch_size':X_query.shape[0]})}
+        step_metrics = {
+            **step_metrics, 
+            **({'batch_size':X_query.shape[0]}),
+            **{'full_kl_loss': full_kl_loss},
+            **{'full_logits': logits}
+        }
         return step_metrics 
 
     ###################################################
@@ -500,64 +527,74 @@ class ContrastiveTrainModule(TrainModule):
     
     def configure_optimizers(self):
 
-        assert self.hparams['contrastive_optimizer'] in ('sgd', 'scheduled_adam', 'adam', 'cosine_annealing')
+        opt = torch.optim.Adam(
+            params=self.model.parameters(),
+            lr=1e-05,
+            betas=(
+                self.hparams['adam_beta1'], self.hparams['adam_beta2']),
+            eps=self.hparams['adam_epsilon'],
+            weight_decay=self.hparams['adam_weight_decay']
+        )
+        return opt
 
-        if self.hparams['contrastive_optimizer'] == 'scheduled_adam':
+        # assert self.hparams['contrastive_optimizer'] in ('sgd', 'scheduled_adam', 'adam', 'cosine_annealing')
 
-            opt = LRScheduledAdam(
-                params=self.model.parameters(),
-                d_model=self.hparams['d_model'], 
-                warmup_steps=self.hparams['scheduled_adam_warmup_steps'],
-                lr=0.,
-                betas=(
-                    self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
-                eps=self.hparams['scheduled_adam_epsilon'],
-                correct_bias=True,
-                decay_lr=self.hparams["additional_lr_decay"],
-                decay_lr_starts=self.hparams["decay_lr_starts"], 
-                decay_lr_stops=self.hparams['decay_lr_stops'],
-                decay_lr_interval=self.hparams["decay_lr_interval"], 
-                decay_gamma=self.hparams["additional_lr_decay_gamma"], 
-                overall_lr_scale=self.hparams['contrastive_overall_lr_scale'],
-            )
-            return opt
+        # if self.hparams['contrastive_optimizer'] == 'scheduled_adam':
 
-        elif self.hparams['contrastive_optimizer'] == 'sgd':
+        #     opt = LRScheduledAdam(
+        #         params=self.model.parameters(),
+        #         d_model=self.hparams['d_model'], 
+        #         warmup_steps=self.hparams['scheduled_adam_warmup_steps'],
+        #         lr=0.,
+        #         betas=(
+        #             self.hparams['scheduled_adam_beta1'], self.hparams['scheduled_adam_beta2']),
+        #         eps=self.hparams['scheduled_adam_epsilon'],
+        #         correct_bias=True,
+        #         decay_lr=self.hparams["additional_lr_decay"],
+        #         decay_lr_starts=self.hparams["decay_lr_starts"], 
+        #         decay_lr_stops=self.hparams['decay_lr_stops'],
+        #         decay_lr_interval=self.hparams["decay_lr_interval"], 
+        #         decay_gamma=self.hparams["additional_lr_decay_gamma"], 
+        #         overall_lr_scale=self.hparams['contrastive_overall_lr_scale'],
+        #     )
+        #     return opt
+
+        # elif self.hparams['contrastive_optimizer'] == 'sgd':
             
-            opt = torch.optim.SGD(
-                    params=self.model.parameters(),
-                    lr=self.hparams['sgd_lr'],
-                    momentum=self.hparams['sgd_momentum']
-                )
-            return opt
+        #     opt = torch.optim.SGD(
+        #             params=self.model.parameters(),
+        #             lr=self.hparams['sgd_lr'],
+        #             momentum=self.hparams['sgd_momentum']
+        #         )
+        #     return opt
 
-        elif self.hparams['contrastive_optimizer'] == 'adam':
+        # elif self.hparams['contrastive_optimizer'] == 'adam':
 
-            opt = torch.optim.Adam(
-                params=self.model.parameters(),
-                lr=self.hparams['adam_lr'],
-                betas=(
-                    self.hparams['adam_beta1'], self.hparams['adam_beta2']),
-                eps=self.hparams['adam_epsilon'],
-                weight_decay=self.hparams['adam_weight_decay']
-            )
-            return opt
+        #     opt = torch.optim.Adam(
+        #         params=self.model.parameters(),
+        #         lr=self.hparams['adam_lr'],
+        #         betas=(
+        #             self.hparams['adam_beta1'], self.hparams['adam_beta2']),
+        #         eps=self.hparams['adam_epsilon'],
+        #         weight_decay=self.hparams['adam_weight_decay']
+        #     )
+        #     return opt
 
-        else: # cosine_annealing
+        # else: # cosine_annealing
 
-            opt = torch.optim.Adam(
-                params=self.model.parameters(),
-                lr=self.hparams['adam_lr'],
-                betas=(
-                    self.hparams['adam_beta1'], self.hparams['adam_beta2']),
-                eps=self.hparams['adam_epsilon'],
-                weight_decay=self.hparams['adam_weight_decay']
-            )
+        #     opt = torch.optim.Adam(
+        #         params=self.model.parameters(),
+        #         lr=self.hparams['adam_lr'],
+        #         betas=(
+        #             self.hparams['adam_beta1'], self.hparams['adam_beta2']),
+        #         eps=self.hparams['adam_epsilon'],
+        #         weight_decay=self.hparams['adam_weight_decay']
+        #     )
             
-            # https://pytorch.org/docs/stable/optim.html#torch.optim.lr_scheduler.CosineAnnealingLR
-            # https://discuss.pytorch.org/t/how-to-implement-torch-optim-lr-scheduler-cosineannealinglr/28797/6
-            sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=self.hparams['cosine_annealing_T_max'])
+        #     # https://pytorch.org/docs/stable/optim.html#torch.optim.lr_scheduler.CosineAnnealingLR
+        #     # https://discuss.pytorch.org/t/how-to-implement-torch-optim-lr-scheduler-cosineannealinglr/28797/6
+        #     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=self.hparams['cosine_annealing_T_max'])
 
-            return [opt], [sched]
+        #     return [opt], [sched]
 
 

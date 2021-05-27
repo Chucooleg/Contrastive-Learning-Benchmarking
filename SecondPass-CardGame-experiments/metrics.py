@@ -77,9 +77,10 @@ class KLdivLoss(nn.Module):
     def __init__(self):
         super().__init__()
         self.KLdiv_criterion = nn.KLDivLoss(reduction='sum')
+        self.KLdiv_criterion_full = nn.KLDivLoss(reduction='none')
         self.logprob = nn.LogSoftmax(dim=-1)
 
-    def forward(self, logits, gt_binary, debug=False):
+    def forward(self, logits, gt_binary, debug=False, full_test_bool=False):
         '''
         logits: shape (batch_size=b, key_support_size)
         labels: shape (batch_size=b, key_support_size)
@@ -90,7 +91,10 @@ class KLdivLoss(nn.Module):
         pred_logprobs = self.logprob(logits)
         gt_probs = gt_binary / torch.sum(gt_binary, dim=-1).unsqueeze(-1)
 
-        return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs)
+        if full_test_bool:
+            return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs), self.KLdiv_criterion_full(input=pred_logprobs, target=gt_probs)
+        else:
+            return self.KLdiv_criterion(input=pred_logprobs, target=gt_probs), None
 
 ############################################################
 class LabelSmoothedLoss(nn.Module):
